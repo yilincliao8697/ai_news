@@ -192,7 +192,7 @@ curl "http://localhost:8000/articles?topic=ai&limit=10"
   {
     "title": "New LLM Benchmark Released",
     "link": "https://example.com/article",
-    "source": "VentureBeat",
+    "source": "Latent Space",
     "topic": "ai",
     "summary": "Researchers released a new benchmark for evaluating LLM reasoning. The benchmark tests multi-step logic across 5,000 problems. Initial results show Claude and GPT-4 performing competitively.",
     "created_at": "2026-03-11T10:00:00"
@@ -212,7 +212,7 @@ curl "http://localhost:8000/articles?topic=ai&limit=10"
 
 | Topic | Feed |
 |---|---|
-| `ai` | VentureBeat AI — `feeds.feedburner.com/venturebeat/SSSR` |
+| `ai` | Latent Space — `www.latent.space/feed` |
 | `tech` | Ars Technica — `feeds.arstechnica.com/arstechnica/index` |
 | `science` | Science Daily — `sciencedaily.com/rss/top/science.xml` |
 

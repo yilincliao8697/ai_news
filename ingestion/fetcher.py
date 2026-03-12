@@ -11,7 +11,7 @@ import feedparser
 from dataclasses_shared import RawArticle
 
 RSS_FEEDS: dict[str, str] = {
-    "ai":      "https://feeds.feedburner.com/venturebeat/SSSR",
+    "ai":      "https://www.latent.space/feed",
     "tech":    "https://feeds.arstechnica.com/arstechnica/index",
     "science": "https://www.sciencedaily.com/rss/top/science.xml",
 }

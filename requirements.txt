@@ -1,0 +1,9 @@
+feedparser
+anthropic
+sqlalchemy
+fastapi
+uvicorn[standard]
+apscheduler
+python-dotenv
+httpx
+pytest

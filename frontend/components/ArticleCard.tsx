@@ -21,13 +21,13 @@ export default function ArticleCard({ article }: Props) {
   const badgeClass = TOPIC_COLORS[article.topic] ?? "bg-gray-100 text-gray-600";
 
   return (
-    <article className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+    <article className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-5 hover:shadow-sm dark:hover:bg-gray-800 transition-shadow">
       <div className="flex items-start justify-between gap-3">
         <a
           href={article.link}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-lg font-semibold text-gray-900 hover:text-blue-600 leading-snug"
+          className="text-lg font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 leading-snug"
         >
           {article.title}
         </a>
@@ -38,9 +38,9 @@ export default function ArticleCard({ article }: Props) {
         </span>
       </div>
 
-      <p className="mt-2 text-gray-600 text-sm leading-relaxed">{article.summary}</p>
+      <p className="mt-2 text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{article.summary}</p>
 
-      <footer className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+      <footer className="mt-3 flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{article.source}</span>
         <span>·</span>
         <time dateTime={article.published_at ?? article.created_at}>

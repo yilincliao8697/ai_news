@@ -106,6 +106,7 @@ def list_feeds() -> JSONResponse:
             "name": feed.name,
             "url": feed.url,
             "category": feed.category,
+            "source_type": feed.source_type,
             "enabled": feed.enabled,
             "last_fetched": feed.last_fetched.isoformat() if feed.last_fetched else None,
             "error_count": feed.error_count,

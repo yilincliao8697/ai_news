@@ -1,5 +1,10 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import ArticleCard from "@/components/ArticleCard";
-import TopicFilter from "@/components/TopicFilter";
+import SourceFilter from "@/components/SourceFilter";
+import ThemeToggle from "@/components/ThemeToggle";
+import DigestView from "@/components/DigestView";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -13,48 +18,104 @@ export type Article = {
   published_at: string | null;
 };
 
-type Props = {
-  searchParams: Promise<{ topic?: string }>;
-};
+const TABS = [
+  { key: "digest",   label: "Daily Digest" },
+  { key: "research", label: "Research" },
+  { key: "industry", label: "Industry" },
+  { key: "science",  label: "Science" },
+  { key: "all",      label: "All" },
+] as const;
 
-async function fetchArticles(topic?: string): Promise<Article[]> {
-  const url = topic
-    ? `${API_BASE}/articles?topic=${encodeURIComponent(topic)}`
-    : `${API_BASE}/articles`;
+type TabKey = typeof TABS[number]["key"];
 
-  const res = await fetch(url, { next: { revalidate: 300 } }); // revalidate every 5 min
-  if (!res.ok) return [];
-  return res.json();
-}
+export default function HomePage() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabKey>("digest");
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
 
-export default async function HomePage({ searchParams }: Props) {
-  const { topic } = await searchParams;
-  const articles = await fetchArticles(topic);
+  useEffect(() => {
+    fetch(`${API_BASE}/articles`)
+      .then((res) => res.json())
+      .then((data) => setArticles(data))
+      .catch(() => setArticles([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function handleTabChange(tab: TabKey) {
+    setActiveTab(tab);
+    setSelectedSource(null);
+  }
+
+  const selectedTopic = activeTab === "digest" || activeTab === "all" ? null : activeTab;
+
+  const topicFiltered = selectedTopic
+    ? articles.filter((a) => a.topic === selectedTopic)
+    : articles;
+
+  const availableSources = selectedTopic
+    ? Array.from(new Set(topicFiltered.map((a) => a.source))).sort()
+    : [];
+
+  const displayed = selectedSource
+    ? topicFiltered.filter((a) => a.source === selectedSource)
+    : topicFiltered;
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 py-6 px-4">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-2xl font-bold text-gray-900">AI News</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Curated AI, tech, and science articles — summarized.
-          </p>
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 py-6 px-4">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">AI News</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Curated AI, tech, and science articles — summarized.
+            </p>
+          </div>
+          <ThemeToggle />
         </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-6">
-        <TopicFilter activeTopic={topic} />
+        {/* Tabs */}
+        <nav className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => handleTabChange(tab.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100"
+                  : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
-        {articles.length === 0 ? (
-          <p className="text-gray-500 mt-8 text-center">No articles found.</p>
+        {loading ? (
+          <p className="text-gray-400 dark:text-gray-500 mt-8 text-center">Loading...</p>
+        ) : activeTab === "digest" ? (
+          <DigestView articles={articles} />
         ) : (
-          <ul className="mt-6 space-y-4">
-            {articles.map((article) => (
-              <li key={article.link}>
-                <ArticleCard article={article} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <SourceFilter
+              sources={availableSources}
+              selected={selectedSource}
+              onSelect={setSelectedSource}
+            />
+            {displayed.length === 0 ? (
+              <p className="text-gray-500 dark:text-gray-400 mt-8 text-center">No articles found.</p>
+            ) : (
+              <ul className="mt-6 space-y-4">
+                {displayed.map((article) => (
+                  <li key={article.link}>
+                    <ArticleCard article={article} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </main>

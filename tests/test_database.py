@@ -72,7 +72,7 @@ from database.crud import (
 
 
 def make_feed(url: str = "https://example.com/feed", category: str = "industry") -> Feed:
-    return upsert_feed(name="Test Feed", url=url, category=category, enabled=False)
+    return upsert_feed(name="Test Feed", url=url, category=category, enabled=False, source_type="independent_blog")
 
 
 def test_upsert_feed_inserts():
@@ -131,6 +131,14 @@ def test_get_articles_by_source():
     save_article(make_article(link="https://example.com/2", topic="industry"))
     results = get_articles_by_source("TestSource")
     assert len(results) == 2
+
+
+def test_upsert_feed_sets_source_type():
+    feed = upsert_feed(
+        name="arXiv", url="https://arxiv.org/rss/cs.AI",
+        category="research", source_type="academic_journal"
+    )
+    assert feed.source_type == "academic_journal"
 
 
 def test_get_articles_by_source_limit():

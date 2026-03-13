@@ -118,11 +118,18 @@ def _feed_model_to_dataclass(row: FeedModel) -> Feed:
         enabled=row.enabled,
         last_fetched=row.last_fetched,
         error_count=row.error_count,
+        source_type=row.source_type or "independent_blog",
     )
 
 
-def upsert_feed(name: str, url: str, category: str, enabled: bool = False) -> Feed:
-    """Insert a feed or update name/category if the URL already exists.
+def upsert_feed(
+    name: str,
+    url: str,
+    category: str,
+    enabled: bool = False,
+    source_type: str = "independent_blog",
+) -> Feed:
+    """Insert a feed or update name/category/source_type if the URL already exists.
 
     Does not overwrite `enabled` or `error_count` on update.
 
@@ -131,6 +138,7 @@ def upsert_feed(name: str, url: str, category: str, enabled: bool = False) -> Fe
         url: RSS feed URL (unique key).
         category: One of "research", "industry", "science".
         enabled: Whether this feed is active. Defaults to False.
+        source_type: Display grouping for admin. Defaults to "independent_blog".
 
     Returns:
         The inserted or updated Feed dataclass.
@@ -142,10 +150,11 @@ def upsert_feed(name: str, url: str, category: str, enabled: bool = False) -> Fe
         if existing:
             existing.name = name
             existing.category = category
+            existing.source_type = source_type
             db.commit()
             db.refresh(existing)
             return _feed_model_to_dataclass(existing)
-        row = FeedModel(name=name, url=url, category=category, enabled=enabled)
+        row = FeedModel(name=name, url=url, category=category, enabled=enabled, source_type=source_type)
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -279,6 +288,26 @@ def delete_old_articles(days: int = 7) -> int:
         )
         db.commit()
         return deleted
+    finally:
+        db.close()
+
+
+def migrate_add_source_type() -> None:
+    """Add source_type column to feeds table if it does not already exist.
+
+    Safe to run multiple times — no-op if the column exists.
+    Uses raw SQL because SQLAlchemy create_all does not add columns to
+    existing tables.
+    """
+    from sqlalchemy import text
+
+    init_db()
+    db: Session = SessionLocal()
+    try:
+        db.execute(text("ALTER TABLE feeds ADD COLUMN source_type VARCHAR"))
+        db.commit()
+    except Exception:
+        db.rollback()  # column already exists — safe to ignore
     finally:
         db.close()
 

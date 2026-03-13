@@ -44,7 +44,8 @@ class Feed:
     id: int
     name: str
     url: str            # unique key
-    category: str       # one of: "research", "industry", "science"
+    category: str       # one of: "research", "industry", "science" — pipeline use
     enabled: bool
     last_fetched: datetime | None = None
     error_count: int = 0
+    source_type: str = "independent_blog"   # display grouping for admin

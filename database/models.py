@@ -46,6 +46,7 @@ class FeedModel(Base):
     enabled = Column(Boolean, default=False, nullable=False)
     last_fetched = Column(DateTime, nullable=True)
     error_count = Column(Integer, default=0, nullable=False)
+    source_type = Column(String, nullable=True, index=True)
 
 
 def init_db() -> None:

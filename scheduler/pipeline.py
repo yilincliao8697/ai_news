@@ -14,7 +14,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from agents.filter_agent import filter_article
 from agents.summarize_agent import summarize_article
-from database.crud import save_article
+from database.crud import delete_old_articles, save_article
 from dataclasses_shared import Article, RawArticle
 from ingestion.fetcher import fetch_articles
 
@@ -43,6 +43,11 @@ def run_pipeline() -> dict[str, int]:
     """
     log.info("Pipeline started.")
     stats = {"fetched": 0, "relevant": 0, "saved": 0}
+
+    # Cleanup: remove articles older than 7 days
+    removed = delete_old_articles(days=7)
+    if removed:
+        log.info(f"Cleanup: deleted {removed} articles older than 7 days.")
 
     # Stage 1: Fetch
     raw_articles: list[RawArticle] = fetch_articles()
@@ -74,6 +79,7 @@ def run_pipeline() -> dict[str, int]:
                 topic=raw.topic,
                 summary=summary_result.summary,
                 created_at=datetime.now(timezone.utc),
+                published_at=raw.published_at,
             )
             inserted = save_article(article)
             if inserted:

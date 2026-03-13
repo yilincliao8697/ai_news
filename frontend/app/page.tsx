@@ -10,6 +10,7 @@ export type Article = {
   topic: string;
   summary: string;
   created_at: string;
+  published_at: string | null;
 };
 
 type Props = {

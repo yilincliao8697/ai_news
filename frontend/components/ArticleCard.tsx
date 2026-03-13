@@ -11,6 +11,7 @@ function formatDate(iso: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "America/Los_Angeles",
   });
 }
 
@@ -42,7 +43,9 @@ export default function ArticleCard({ article }: Props) {
       <footer className="mt-3 flex items-center gap-2 text-xs text-gray-400">
         <span>{article.source}</span>
         <span>·</span>
-        <time dateTime={article.created_at}>{formatDate(article.created_at)}</time>
+        <time dateTime={article.published_at ?? article.created_at}>
+          {formatDate(article.published_at ?? article.created_at)}
+        </time>
       </footer>
     </article>
   );

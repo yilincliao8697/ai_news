@@ -77,7 +77,8 @@ def list_articles(
     payload = []
     for article in articles:
         d = asdict(article)
-        d["created_at"] = article.created_at.isoformat()
+        d["created_at"] = article.created_at.isoformat() + "Z"
+        d["published_at"] = article.published_at.isoformat() + "Z" if article.published_at else None
         payload.append(d)
 
     return JSONResponse(content=payload)

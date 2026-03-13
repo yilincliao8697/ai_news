@@ -5,7 +5,7 @@ Returns RawArticle objects only.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 from dotenv import load_dotenv
@@ -15,6 +15,8 @@ from dataclasses_shared import RawArticle
 load_dotenv()
 
 MAX_CONTENT_LENGTH = 1000
+ARTICLE_MAX_AGE_DAYS = 7
+MAX_ARTICLES_PER_FEED = 1
 
 
 def _strip_html(text: str) -> str:
@@ -66,10 +68,10 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime:
     """
     if hasattr(entry, "published_parsed") and entry.published_parsed:
         try:
-            return datetime(*entry.published_parsed[:6])
+            return datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
         except (TypeError, ValueError):
             pass
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def fetch_feed(category: str, url: str) -> list[RawArticle]:
@@ -87,12 +89,17 @@ def fetch_feed(category: str, url: str) -> list[RawArticle]:
     """
     feed = feedparser.parse(url)
     articles: list[RawArticle] = []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=ARTICLE_MAX_AGE_DAYS)
 
     for entry in feed.entries:
         title = _strip_html(getattr(entry, "title", "")).strip()
         link = getattr(entry, "link", "").strip()
 
         if not title or not link:
+            continue
+
+        published = _parse_published(entry)
+        if published < cutoff:
             continue
 
         source = _strip_html(getattr(feed.feed, "title", url)).strip()
@@ -105,8 +112,12 @@ def fetch_feed(category: str, url: str) -> list[RawArticle]:
                 source=source,
                 topic=category,
                 content=content,
+                published_at=published,
             )
         )
+
+        if len(articles) >= MAX_ARTICLES_PER_FEED:
+            break
 
     return articles
 

@@ -31,6 +31,7 @@ class ArticleModel(Base):
     topic = Column(String, nullable=False, index=True)
     summary = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)
 
 
 class FeedModel(Base):

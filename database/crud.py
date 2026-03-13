@@ -1,6 +1,6 @@
 """CRUD functions for the articles and feeds database. No AI logic here."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ def _article_model_to_dataclass(row: ArticleModel) -> Article:
         topic=row.topic,
         summary=row.summary,
         created_at=row.created_at,
+        published_at=row.published_at,
     )
 
 
@@ -47,6 +48,7 @@ def save_article(article: Article) -> bool:
             topic=article.topic,
             summary=article.summary,
             created_at=article.created_at or datetime.utcnow(),
+            published_at=article.published_at,
         )
         db.add(row)
         db.commit()
@@ -245,6 +247,38 @@ def increment_feed_error(feed_id: int) -> None:
         if row:
             row.error_count = (row.error_count or 0) + 1
             db.commit()
+    finally:
+        db.close()
+
+
+def delete_old_articles(days: int = 7) -> int:
+    """Delete articles older than the given number of days.
+
+    Args:
+        days: Age threshold in days. Articles with created_at older than
+              this are deleted. Defaults to 7.
+
+    Returns:
+        Number of articles deleted.
+    """
+    from sqlalchemy import case, or_
+
+    init_db()
+    db: Session = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        # Use published_at when available, fall back to created_at
+        effective_date = case(
+            (ArticleModel.published_at.isnot(None), ArticleModel.published_at),
+            else_=ArticleModel.created_at,
+        )
+        deleted = (
+            db.query(ArticleModel)
+            .filter(effective_date < cutoff)
+            .delete(synchronize_session="fetch")
+        )
+        db.commit()
+        return deleted
     finally:
         db.close()
 

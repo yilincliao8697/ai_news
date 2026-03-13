@@ -11,6 +11,7 @@ class Article:
     topic: str          # one of: "research", "industry", "science"
     summary: str        # 2–4 sentence AI-generated summary
     created_at: datetime
+    published_at: datetime | None = None  # original publish date from RSS feed
 
 
 @dataclass
@@ -21,6 +22,7 @@ class RawArticle:
     source: str
     topic: str          # one of: "research", "industry", "science"
     content: str        # raw text for agents to process
+    published_at: datetime | None = None  # original publish date from RSS feed
 
 
 @dataclass

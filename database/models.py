@@ -1,8 +1,8 @@
-"""SQLAlchemy ORM model for the Article table."""
+"""SQLAlchemy ORM models for the Article and Feed tables."""
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, String, create_engine
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 import os
@@ -31,6 +31,20 @@ class ArticleModel(Base):
     topic = Column(String, nullable=False, index=True)
     summary = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class FeedModel(Base):
+    """ORM model representing an RSS feed in the feed registry."""
+
+    __tablename__ = "feeds"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    url = Column(String, unique=True, nullable=False, index=True)
+    category = Column(String, nullable=False, index=True)
+    enabled = Column(Boolean, default=False, nullable=False)
+    last_fetched = Column(DateTime, nullable=True)
+    error_count = Column(Integer, default=0, nullable=False)
 
 
 def init_db() -> None:

@@ -61,3 +61,79 @@ def test_get_articles_by_topic_filters():
 
 def test_get_articles_empty():
     assert get_articles() == []
+
+
+from dataclasses_shared import Feed
+from database.crud import (
+    upsert_feed, get_all_feeds, get_enabled_feeds,
+    set_feed_enabled, mark_feed_fetched, increment_feed_error,
+    get_articles_by_source,
+)
+
+
+def make_feed(url: str = "https://example.com/feed", category: str = "industry") -> Feed:
+    return upsert_feed(name="Test Feed", url=url, category=category, enabled=False)
+
+
+def test_upsert_feed_inserts():
+    feed = make_feed()
+    assert feed.id is not None
+    assert feed.enabled is False
+
+
+def test_upsert_feed_updates_on_duplicate_url():
+    make_feed(url="https://example.com/feed")
+    upsert_feed(name="Updated", url="https://example.com/feed", category="research")
+    feeds = get_all_feeds()
+    assert len(feeds) == 1
+    assert feeds[0].name == "Updated"
+    assert feeds[0].category == "research"
+
+
+def test_upsert_feed_does_not_overwrite_enabled():
+    feed = make_feed()
+    set_feed_enabled(feed.id, True)
+    upsert_feed(name="Updated", url="https://example.com/feed", category="research")
+    feeds = get_all_feeds()
+    assert feeds[0].enabled is True
+
+
+def test_get_enabled_feeds_filters():
+    upsert_feed("Enabled", "https://a.com/feed", "industry", enabled=True)
+    upsert_feed("Disabled", "https://b.com/feed", "industry", enabled=False)
+    enabled = get_enabled_feeds()
+    assert len(enabled) == 1
+    assert enabled[0].name == "Enabled"
+
+
+def test_set_feed_enabled_returns_false_for_missing():
+    assert set_feed_enabled(9999, True) is False
+
+
+def test_mark_feed_fetched_resets_error():
+    feed = make_feed()
+    increment_feed_error(feed.id)
+    mark_feed_fetched(feed.id)
+    feeds = get_all_feeds()
+    assert feeds[0].error_count == 0
+    assert feeds[0].last_fetched is not None
+
+
+def test_increment_feed_error():
+    feed = make_feed()
+    increment_feed_error(feed.id)
+    increment_feed_error(feed.id)
+    assert get_all_feeds()[0].error_count == 2
+
+
+def test_get_articles_by_source():
+    save_article(make_article(link="https://example.com/1", topic="research"))
+    save_article(make_article(link="https://example.com/2", topic="industry"))
+    results = get_articles_by_source("TestSource")
+    assert len(results) == 2
+
+
+def test_get_articles_by_source_limit():
+    for i in range(5):
+        save_article(make_article(link=f"https://example.com/{i}", topic="research"))
+    assert len(get_articles_by_source("TestSource", limit=2)) == 2

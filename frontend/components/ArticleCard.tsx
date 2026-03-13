@@ -1,9 +1,9 @@
 import { Article } from "@/app/page";
 
 const TOPIC_COLORS: Record<string, string> = {
-  ai:      "bg-purple-100 text-purple-700",
-  tech:    "bg-blue-100 text-blue-700",
-  science: "bg-green-100 text-green-700",
+  research: "bg-purple-100 text-purple-700",
+  industry: "bg-blue-100 text-blue-700",
+  science:  "bg-green-100 text-green-700",
 };
 
 function formatDate(iso: string): string {

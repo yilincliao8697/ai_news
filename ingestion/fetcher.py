@@ -1,20 +1,18 @@
-"""RSS ingestion module. Fetches and normalizes articles from RSS feeds.
+"""RSS ingestion module. Fetches and normalizes articles from enabled feeds.
 
-No AI logic. No database writes. Returns RawArticle objects only.
+Reads enabled feeds from the database at runtime. No AI logic. No DB writes.
+Returns RawArticle objects only.
 """
 
 import re
 from datetime import datetime
 
 import feedparser
+from dotenv import load_dotenv
 
 from dataclasses_shared import RawArticle
 
-RSS_FEEDS: dict[str, str] = {
-    "ai":      "https://www.latent.space/feed",
-    "tech":    "https://feeds.arstechnica.com/arstechnica/index",
-    "science": "https://www.sciencedaily.com/rss/top/science.xml",
-}
+load_dotenv()
 
 MAX_CONTENT_LENGTH = 1000
 
@@ -34,7 +32,7 @@ def _strip_html(text: str) -> str:
 def _extract_content(entry: feedparser.FeedParserDict) -> str:
     """Extract the best available text content from a feed entry.
 
-    Prefers `content[0].value`, falls back to `summary`, then `title`.
+    Prefers content[0].value, falls back to summary, then title.
     Strips HTML and truncates to MAX_CONTENT_LENGTH characters.
 
     Args:
@@ -58,7 +56,7 @@ def _extract_content(entry: feedparser.FeedParserDict) -> str:
 def _parse_published(entry: feedparser.FeedParserDict) -> datetime:
     """Parse the published date from a feed entry.
 
-    Falls back to the current UTC time if no date is present or parseable.
+    Falls back to current UTC time if no date is present or parseable.
 
     Args:
         entry: A single parsed feed entry from feedparser.
@@ -74,14 +72,14 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime:
     return datetime.utcnow()
 
 
-def fetch_feed(topic: str, url: str) -> list[RawArticle]:
+def fetch_feed(category: str, url: str) -> list[RawArticle]:
     """Fetch and normalize articles from a single RSS feed URL.
 
     Parses the feed, extracts entries, and converts each to a RawArticle.
-    Skips entries that are missing a title or link.
+    Skips entries missing a title or link.
 
     Args:
-        topic: The topic label for this feed (e.g. "ai", "tech", "science").
+        category: Topic category for this feed ("research", "industry", "science").
         url: The RSS feed URL to fetch.
 
     Returns:
@@ -105,7 +103,7 @@ def fetch_feed(topic: str, url: str) -> list[RawArticle]:
                 title=title,
                 link=link,
                 source=source,
-                topic=topic,
+                topic=category,
                 content=content,
             )
         )
@@ -114,23 +112,28 @@ def fetch_feed(topic: str, url: str) -> list[RawArticle]:
 
 
 def fetch_articles() -> list[RawArticle]:
-    """Fetch articles from all configured RSS feeds.
+    """Fetch articles from all enabled feeds in the database.
 
-    Iterates over RSS_FEEDS, calls fetch_feed() for each, and aggregates
-    the results. Feed-level errors are caught and logged so one broken
-    feed does not abort the others.
+    Calls get_enabled_feeds() to retrieve the current feed list at runtime.
+    Calls mark_feed_fetched() on success and increment_feed_error() on failure
+    for each feed, so health stats stay current.
 
     Returns:
-        Combined list of RawArticle objects from all feeds.
+        Combined list of RawArticle objects from all enabled feeds.
     """
+    from database.crud import get_enabled_feeds, increment_feed_error, mark_feed_fetched
+
+    enabled_feeds = get_enabled_feeds()
     all_articles: list[RawArticle] = []
 
-    for topic, url in RSS_FEEDS.items():
+    for feed in enabled_feeds:
         try:
-            articles = fetch_feed(topic, url)
-            print(f"[ingestion] {topic}: fetched {len(articles)} articles from {url}")
+            articles = fetch_feed(feed.category, feed.url)
+            mark_feed_fetched(feed.id)
+            print(f"[ingestion] {feed.name}: fetched {len(articles)} articles")
             all_articles.extend(articles)
         except Exception as e:
-            print(f"[ingestion] ERROR fetching {topic} ({url}): {e}")
+            increment_feed_error(feed.id)
+            print(f"[ingestion] ERROR fetching {feed.name} ({feed.url}): {e}")
 
     return all_articles

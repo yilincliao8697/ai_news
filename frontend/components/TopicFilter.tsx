@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const TOPICS = ["ai", "tech", "science"] as const;
+const TOPICS = ["research", "industry", "science"] as const;
 
 type Props = { activeTopic?: string };
 

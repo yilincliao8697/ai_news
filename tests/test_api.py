@@ -197,17 +197,36 @@ def test_bulk_toggle_unknown_group_returns_zero(mock_feeds):
     assert response.json()["updated"] == 0
 
 
-# --- Targeted per-feed fetch tests ---
+# --- Targeted per-feed fetch tests (module 25: non-blocking) ---
+
+@patch("api.main.get_feed_by_id")
+def test_fetch_single_feed_returns_202(mock_get_feed):
+    from dataclasses_shared import Feed
+
+    feed = Feed(id=1, name="arXiv", url="https://arxiv.org/rss",
+                category="research", enabled=True)
+    mock_get_feed.return_value = feed
+
+    response = client.post("/feeds/1/fetch")
+    assert response.status_code == 202
+    assert response.json() == {"status": "started"}
+
+
+@patch("api.main.get_feed_by_id", return_value=None)
+def test_fetch_single_feed_returns_404_for_missing(mock_get):
+    response = client.post("/feeds/9999/fetch")
+    assert response.status_code == 404
+
 
 @patch("api.main.parse_feed_entries")
 @patch("api.main.filter_article")
 @patch("api.main.summarize_article")
 @patch("api.main.save_article")
 @patch("api.main.mark_feed_fetched")
-@patch("api.main.get_feed_by_id")
-def test_fetch_single_feed_saves_relevant_articles(
-    mock_get_feed, mock_mark, mock_save, mock_summarize, mock_filter, mock_parse
+def test_run_feed_pipeline_saves_relevant_articles(
+    mock_mark, mock_save, mock_summarize, mock_filter, mock_parse
 ):
+    from api.main import _run_feed_pipeline
     from dataclasses_shared import Feed, RawArticle, FilterResult, SummaryResult
 
     feed = Feed(id=1, name="arXiv", url="https://arxiv.org/rss",
@@ -215,46 +234,79 @@ def test_fetch_single_feed_saves_relevant_articles(
     raw = RawArticle(title="New paper", link="https://arxiv.org/abs/1",
                      source="arXiv", topic="research", content="Abstract text.")
 
-    mock_get_feed.return_value = feed
     mock_parse.return_value = [raw]
     mock_filter.return_value = FilterResult(is_relevant=True, reason="On topic")
     mock_summarize.return_value = SummaryResult(summary="A summary sentence.")
     mock_save.return_value = True
 
-    response = client.post("/feeds/1/fetch")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["fetched"] == 1
-    assert data["saved"] == 1
+    _run_feed_pipeline(1, feed)
+
+    mock_save.assert_called_once()
     mock_mark.assert_called_once_with(1)
 
 
 @patch("api.main.parse_feed_entries")
 @patch("api.main.filter_article")
-@patch("api.main.get_feed_by_id")
-def test_fetch_single_feed_skips_irrelevant_articles(
-    mock_get_feed, mock_filter, mock_parse
+@patch("api.main.increment_feed_error")
+def test_run_feed_pipeline_increments_error_on_rss_failure(
+    mock_error, mock_filter, mock_parse
 ):
-    from dataclasses_shared import Feed, RawArticle, FilterResult
+    from api.main import _run_feed_pipeline
+    from dataclasses_shared import Feed
 
     feed = Feed(id=1, name="arXiv", url="https://arxiv.org/rss",
                 category="research", enabled=True)
-    raw = RawArticle(title="Off topic", link="https://arxiv.org/abs/2",
-                     source="arXiv", topic="research", content="Not relevant.")
+    mock_parse.side_effect = Exception("RSS fetch failed")
 
-    mock_get_feed.return_value = feed
-    mock_parse.return_value = [raw]
-    mock_filter.return_value = FilterResult(is_relevant=False, reason="Off topic")
+    _run_feed_pipeline(1, feed)
 
-    response = client.post("/feeds/1/fetch")
+    mock_error.assert_called_once_with(1)
+    mock_filter.assert_not_called()
+
+
+# --- Scheduler status tests (module 28) ---
+
+@patch("api.main.get_last_run", return_value=None)
+@patch("api.main.scheduler")
+def test_scheduler_status_returns_nulls_when_no_run(mock_scheduler, mock_last_run):
+    mock_scheduler.get_job.return_value = None
+
+    response = client.get("/scheduler/status")
     assert response.status_code == 200
-    assert response.json()["saved"] == 0
+    data = response.json()
+    assert data["last_run"] is None
+    assert data["next_run"] is None
 
 
-@patch("api.main.get_feed_by_id", return_value=None)
-def test_fetch_single_feed_returns_404_for_missing(mock_get):
-    response = client.post("/feeds/9999/fetch")
-    assert response.status_code == 404
+@patch("api.main.get_last_run")
+@patch("api.main.scheduler")
+def test_scheduler_status_returns_times_when_available(mock_scheduler, mock_last_run):
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+
+    last = datetime(2026, 3, 16, 9, 0, 0, tzinfo=timezone.utc)
+    next_ = datetime(2026, 3, 16, 15, 0, 0, tzinfo=timezone.utc)
+
+    mock_last_run.return_value = last
+    mock_job = MagicMock()
+    mock_job.next_run_time = next_
+    mock_scheduler.get_job.return_value = mock_job
+
+    response = client.get("/scheduler/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["last_run"] == last.isoformat()
+    assert data["next_run"] == next_.isoformat()
+
+
+@patch("api.main.get_last_run", return_value=None)
+@patch("api.main.scheduler")
+def test_scheduler_status_handles_scheduler_error_gracefully(mock_scheduler, mock_last_run):
+    mock_scheduler.get_job.side_effect = Exception("Scheduler not running")
+
+    response = client.get("/scheduler/status")
+    assert response.status_code == 200
+    assert response.json()["next_run"] is None
 
 
 # --- Pipeline trigger and error reset tests ---

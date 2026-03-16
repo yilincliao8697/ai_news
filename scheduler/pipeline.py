@@ -10,6 +10,7 @@ Run directly:
 import logging
 from datetime import datetime, timezone
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from agents.filter_agent import filter_article
@@ -17,6 +18,17 @@ from agents.summarize_agent import summarize_article
 from database.crud import delete_old_articles, save_article
 from dataclasses_shared import Article, RawArticle
 from ingestion.fetcher import fetch_articles
+
+# Module-level scheduler instance for import by the API process.
+scheduler = BackgroundScheduler()
+
+_last_run: datetime | None = None
+
+
+def get_last_run() -> datetime | None:
+    """Return the most recent pipeline run time, or None if never run."""
+    return _last_run
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +53,8 @@ def run_pipeline() -> dict[str, int]:
     Returns:
         A dict with counts: {"fetched": int, "relevant": int, "saved": int}
     """
+    global _last_run
+    _last_run = datetime.now(timezone.utc)
     log.info("Pipeline started.")
     stats = {"fetched": 0, "relevant": 0, "saved": 0}
 

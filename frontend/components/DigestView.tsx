@@ -101,7 +101,7 @@ export default function DigestView({ articles, topic }: Props) {
                         onClick={() =>
                           setExpandedLink(expandedLink === article.link ? null : article.link)
                         }
-                        className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xs mt-0.5"
+                        className="flex-shrink-0 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm px-1 rounded mt-0.5 transition-colors"
                         aria-label={expandedLink === article.link ? "Collapse" : "Expand"}
                       >
                         {expandedLink === article.link ? "˅" : "›"}

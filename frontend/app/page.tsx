@@ -26,11 +26,20 @@ const DIGEST_TABS = [
   { key: "all",      label: "All" },
   { key: "research", label: "Research" },
   { key: "industry", label: "Industry" },
-  { key: "science",  label: "Science" },
 ] as const;
 
 type TopTab = typeof TOP_TABS[number]["key"];
 type DigestTab = typeof DIGEST_TABS[number]["key"];
+
+function getNextUpdateLabel(nextRunIso: string | null): string | null {
+  if (!nextRunIso) return null;
+  const diffMs = new Date(nextRunIso).getTime() - Date.now();
+  if (diffMs <= 0) return null;
+  const diffMins = Math.round(diffMs / 60000);
+  if (diffMins < 60) return `~${diffMins}m`;
+  const diffHours = Math.round(diffMins / 60);
+  return `~${diffHours}h`;
+}
 
 function getLastUpdated(articles: Article[], topic: string): string | null {
   const relevant = topic === "all" ? articles : articles.filter((a) => a.topic === topic);
@@ -50,8 +59,26 @@ export default function HomePage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [feeds, setFeeds] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feedsLoading, setFeedsLoading] = useState(true);
+  const [feedsError, setFeedsError] = useState(false);
+  const [nextRun, setNextRun] = useState<string | null>(null);
   const [topTab, setTopTab] = useState<TopTab>("digest");
   const [digestTab, setDigestTab] = useState<DigestTab>("all");
+
+  async function loadFeeds() {
+    setFeedsLoading(true);
+    setFeedsError(false);
+    try {
+      const res = await fetch(`${API_BASE}/admin/feeds`);
+      if (!res.ok) throw new Error("Failed to load feeds");
+      const data = await res.json();
+      setFeeds(data);
+    } catch {
+      setFeedsError(true);
+    } finally {
+      setFeedsLoading(false);
+    }
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/articles?limit=500`)
@@ -60,9 +87,11 @@ export default function HomePage() {
       .catch(() => setArticles([]))
       .finally(() => setLoading(false));
 
-    fetch(`${API_BASE}/admin/feeds`)
+    loadFeeds();
+
+    fetch(`${API_BASE}/scheduler/status`)
       .then((r) => r.json())
-      .then(setFeeds)
+      .then((data) => setNextRun(data.next_run ?? null))
       .catch(() => {});
   }, []);
 
@@ -128,6 +157,9 @@ export default function HomePage() {
             {lastUpdated && (
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 mb-4">
                 Updated {lastUpdated}
+                {getNextUpdateLabel(nextRun) && (
+                  <span> · Next update in {getNextUpdateLabel(nextRun)}</span>
+                )}
               </p>
             )}
 
@@ -140,7 +172,23 @@ export default function HomePage() {
         )}
 
         {topTab === "feeds" && (
-          <FeedTable feeds={feeds} onArticlesChanged={refreshArticles} />
+          feedsLoading ? (
+            <div className="flex justify-center mt-16">
+              <span className="text-gray-400 dark:text-gray-500 text-sm animate-pulse">Loading feeds…</span>
+            </div>
+          ) : feedsError ? (
+            <div className="flex flex-col items-center mt-16 gap-3">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Failed to load feeds.</p>
+              <button
+                onClick={loadFeeds}
+                className="px-4 py-2 text-sm font-medium rounded-md bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 hover:opacity-90 transition-opacity"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <FeedTable feeds={feeds} onArticlesChanged={refreshArticles} />
+          )
         )}
       </div>
     </main>

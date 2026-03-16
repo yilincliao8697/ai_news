@@ -77,6 +77,7 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
   const [loading, setLoading] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState<Set<string>>(new Set());
   const [fetching, setFetching] = useState<Set<number>>(new Set());
+  const [fetchDone, setFetchDone] = useState<Set<number>>(new Set());
 
   function toggleGroup(key: string) {
     setCollapsedGroups((prev) => {
@@ -114,7 +115,14 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
     setFetching((prev) => new Set(prev).add(id));
     try {
       await fetch(`${API_BASE}/feeds/${id}/fetch`, { method: "POST" });
-      onArticlesChanged?.();
+      setFetchDone((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setFetchDone((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 4000);
     } catch {
       // fail silently — scheduled pipeline will pick it up
     } finally {
@@ -216,6 +224,10 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
                           {fetching.has(feed.id) ? (
                             <span className="ml-2 text-xs text-blue-500 dark:text-blue-400 animate-pulse">
                               fetching…
+                            </span>
+                          ) : fetchDone.has(feed.id) ? (
+                            <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                              check back soon
                             </span>
                           ) : (
                             <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">

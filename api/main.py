@@ -4,11 +4,12 @@ Exposes public endpoints, feed management endpoints, and admin endpoints.
 Pipeline can be triggered via API for manual runs and targeted per-feed fetches.
 """
 
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -28,10 +29,28 @@ from database.crud import (
     set_feed_enabled,
 )
 from ingestion.fetcher import fetch_articles, parse_feed_entries
+from scheduler.pipeline import get_last_run, run_pipeline, scheduler
 
 load_dotenv()
 
-app = FastAPI(title="AI News API", version="4.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start the background scheduler on API startup and shut it down on exit."""
+    scheduler.add_job(
+        run_pipeline,
+        trigger="interval",
+        hours=6,
+        next_run_time=datetime.now(timezone.utc),
+        id="pipeline",
+        name="AI News Pipeline",
+    )
+    scheduler.start()
+    yield
+    scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="AI News API", version="5.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -100,30 +119,19 @@ def list_articles(
 
 # --- Feed endpoints ---
 
-@app.post("/feeds/{feed_id}/fetch")
-def fetch_single_feed(feed_id: int = Path(..., description="Feed ID to fetch")) -> JSONResponse:
-    """Run the pipeline for a single feed by ID.
-
-    Fetches RSS entries, filters for relevance, summarizes relevant articles,
-    and stores them. Idempotent — duplicate articles (by link) are skipped.
+def _run_feed_pipeline(feed_id: int, feed) -> None:
+    """Background task: fetch, filter, summarize, and store articles for one feed.
 
     Args:
-        feed_id: Primary key of the feed to fetch.
-
-    Returns:
-        JSON object with fetched and saved counts. HTTP 404 if feed not found.
+        feed_id: Primary key of the feed being processed.
+        feed: Feed dataclass instance.
     """
-    feed = get_feed_by_id(feed_id)
-    if not feed:
-        raise HTTPException(status_code=404, detail=f"Feed {feed_id} not found.")
-
     try:
         raw_articles = parse_feed_entries(feed)
-    except Exception as e:
+    except Exception:
         increment_feed_error(feed_id)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch feed: {e}")
+        return
 
-    saved = 0
     for raw in raw_articles:
         try:
             filter_result = filter_article(raw)
@@ -139,13 +147,36 @@ def fetch_single_feed(feed_id: int = Path(..., description="Feed ID to fetch")) 
                 created_at=datetime.now(timezone.utc),
                 published_at=raw.published_at,
             )
-            if save_article(article):
-                saved += 1
+            save_article(article)
         except Exception:
             continue
 
     mark_feed_fetched(feed_id)
-    return JSONResponse(content={"fetched": len(raw_articles), "saved": saved})
+
+
+@app.post("/feeds/{feed_id}/fetch", status_code=202)
+def fetch_single_feed(
+    feed_id: int = Path(..., description="Feed ID to fetch"),
+    background_tasks: BackgroundTasks = None,
+) -> JSONResponse:
+    """Queue a background pipeline run for a single feed. Returns immediately.
+
+    Validates the feed exists, then queues fetch → filter → summarize → store
+    as a background task. Does not block on AI calls.
+
+    Args:
+        feed_id: Primary key of the feed to fetch.
+        background_tasks: FastAPI background task runner (injected).
+
+    Returns:
+        JSON {"status": "started"} with HTTP 202. HTTP 404 if feed not found.
+    """
+    feed = get_feed_by_id(feed_id)
+    if not feed:
+        raise HTTPException(status_code=404, detail=f"Feed {feed_id} not found.")
+
+    background_tasks.add_task(_run_feed_pipeline, feed_id, feed)
+    return JSONResponse(status_code=202, content={"status": "started"})
 
 
 # --- Admin endpoints ---
@@ -245,6 +276,28 @@ def reset_feed_errors(feed_id: int = Path(..., description="Feed ID to reset")) 
         raise HTTPException(status_code=404, detail=f"Feed {feed_id} not found.")
     mark_feed_fetched(feed_id)
     return JSONResponse(content={"ok": True})
+
+
+@app.get("/scheduler/status")
+def scheduler_status() -> JSONResponse:
+    """Return the scheduler's last run time and next scheduled run time.
+
+    Returns:
+        JSON object with last_run and next_run as ISO strings (or null).
+    """
+    last_run = get_last_run()
+    next_run = None
+    try:
+        job = scheduler.get_job("pipeline")
+        if job and job.next_run_time:
+            next_run = job.next_run_time.isoformat()
+    except Exception:
+        pass
+
+    return JSONResponse(content={
+        "last_run": last_run.isoformat() if last_run else None,
+        "next_run": next_run,
+    })
 
 
 @app.post("/admin/run-pipeline")

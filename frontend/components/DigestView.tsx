@@ -32,11 +32,13 @@ type Props = {
 export default function DigestView({ articles, topic }: Props) {
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
 
-  const todayKey = toLocalDateKey(new Date());
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  cutoff.setHours(0, 0, 0, 0);
 
   const filtered = articles.filter((a) => {
     const d = getEffectiveDate(a);
-    if (toLocalDateKey(d) !== todayKey) return false;
+    if (d < cutoff) return false;
     if (topic !== "all" && a.topic !== topic) return false;
     return true;
   });
@@ -53,7 +55,7 @@ export default function DigestView({ articles, topic }: Props) {
       getEffectiveDate(b[0]).getTime() - getEffectiveDate(a[0]).getTime()
   );
 
-  const emptyMessage = topic === "all" ? "No articles today." : `No ${topic} articles today.`;
+  const emptyMessage = topic === "all" ? "No articles in the past 7 days." : `No ${topic} articles in the past 7 days.`;
 
   if (sortedGroups.length === 0) {
     return (

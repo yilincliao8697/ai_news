@@ -54,7 +54,7 @@ export default function HomePage() {
   const [digestTab, setDigestTab] = useState<DigestTab>("all");
 
   useEffect(() => {
-    fetch(`${API_BASE}/articles`)
+    fetch(`${API_BASE}/articles?limit=500`)
       .then((res) => res.json())
       .then((data) => setArticles(data))
       .catch(() => setArticles([]))

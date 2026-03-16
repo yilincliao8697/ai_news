@@ -16,7 +16,7 @@ load_dotenv()
 
 MAX_CONTENT_LENGTH = 1000
 ARTICLE_MAX_AGE_DAYS = 7
-MAX_ARTICLES_PER_FEED = 1
+MAX_ARTICLES_PER_FEED = 20
 
 
 def _strip_html(text: str) -> str:

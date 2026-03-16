@@ -62,6 +62,7 @@ export default function HomePage() {
   const [feedsLoading, setFeedsLoading] = useState(true);
   const [feedsError, setFeedsError] = useState(false);
   const [nextRun, setNextRun] = useState<string | null>(null);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
   const [topTab, setTopTab] = useState<TopTab>("digest");
   const [digestTab, setDigestTab] = useState<DigestTab>("all");
 
@@ -94,6 +95,17 @@ export default function HomePage() {
       .then((data) => setNextRun(data.next_run ?? null))
       .catch(() => {});
   }, []);
+
+  async function runPipeline() {
+    setPipelineRunning(true);
+    try {
+      await fetch(`${API_BASE}/admin/run-pipeline`, { method: "POST" });
+    } catch {
+      // fail silently
+    } finally {
+      setPipelineRunning(false);
+    }
+  }
 
   async function refreshArticles() {
     const data = await fetch(`${API_BASE}/articles`)
@@ -187,7 +199,22 @@ export default function HomePage() {
               </button>
             </div>
           ) : (
-            <FeedTable feeds={feeds} onArticlesChanged={refreshArticles} />
+            <>
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={runPipeline}
+                  disabled={pipelineRunning}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-opacity ${
+                    pipelineRunning
+                      ? "bg-gray-400 dark:bg-gray-600 text-white cursor-not-allowed animate-pulse"
+                      : "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 hover:opacity-90"
+                  }`}
+                >
+                  {pipelineRunning ? "Running…" : "Rerun all enabled feeds"}
+                </button>
+              </div>
+              <FeedTable feeds={feeds} onArticlesChanged={refreshArticles} />
+            </>
           )
         )}
       </div>

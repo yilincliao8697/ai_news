@@ -145,3 +145,45 @@ def test_get_articles_by_source_limit():
     for i in range(5):
         save_article(make_article(link=f"https://example.com/{i}", topic="research"))
     assert len(get_articles_by_source("TestSource", limit=2)) == 2
+
+
+# --- Enabled feed filter tests (module 32) ---
+
+def test_get_articles_excludes_disabled_feed():
+    """Articles from disabled feeds should not appear in get_articles()."""
+    upsert_feed(name="DisabledSource", url="https://disabled.com/rss",
+                category="industry", enabled=False)
+    article = Article(
+        title="Hidden", link="https://disabled.com/1",
+        source="DisabledSource", topic="industry",
+        summary="A summary.", created_at=datetime.utcnow(),
+    )
+    save_article(article)
+    results = get_articles()
+    assert all(a.source != "DisabledSource" for a in results)
+
+
+def test_get_articles_includes_enabled_feed():
+    """Articles from enabled feeds should appear in get_articles()."""
+    upsert_feed(name="EnabledSource", url="https://enabled.com/rss",
+                category="industry", enabled=True)
+    article = Article(
+        title="Visible", link="https://enabled.com/1",
+        source="EnabledSource", topic="industry",
+        summary="A summary.", created_at=datetime.utcnow(),
+    )
+    save_article(article)
+    results = get_articles()
+    assert any(a.source == "EnabledSource" for a in results)
+
+
+def test_get_articles_includes_unknown_source():
+    """Articles with no matching feed in the registry should still appear."""
+    article = Article(
+        title="Unknown source article", link="https://unknown.com/1",
+        source="UnknownSource", topic="industry",
+        summary="A summary.", created_at=datetime.utcnow(),
+    )
+    save_article(article)
+    results = get_articles()
+    assert any(a.source == "UnknownSource" for a in results)

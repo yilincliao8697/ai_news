@@ -58,8 +58,10 @@ def save_article(article: Article) -> bool:
 
 
 def get_articles(limit: int = 100) -> list[Article]:
-    """
-    Return the most recent articles, newest first.
+    """Return the most recent articles from enabled feeds, newest first.
+
+    Articles whose source does not match any feed in the registry are
+    also included (left join — unknown sources are not hidden).
 
     Args:
         limit: Maximum number of articles to return. Defaults to 100.
@@ -67,11 +69,15 @@ def get_articles(limit: int = 100) -> list[Article]:
     Returns:
         List of Article dataclasses ordered by created_at descending.
     """
+    from sqlalchemy import or_
+
     init_db()
     db: Session = SessionLocal()
     try:
         rows = (
             db.query(ArticleModel)
+            .outerjoin(FeedModel, ArticleModel.source == FeedModel.name)
+            .filter(or_(FeedModel.id.is_(None), FeedModel.enabled.is_(True)))
             .order_by(ArticleModel.created_at.desc())
             .limit(limit)
             .all()
@@ -82,8 +88,10 @@ def get_articles(limit: int = 100) -> list[Article]:
 
 
 def get_articles_by_topic(topic: str, limit: int = 100) -> list[Article]:
-    """
-    Return articles filtered by topic, newest first.
+    """Return articles filtered by topic from enabled feeds, newest first.
+
+    Articles whose source does not match any feed in the registry are
+    also included (left join — unknown sources are not hidden).
 
     Args:
         topic: One of "research", "industry", "science".
@@ -93,11 +101,15 @@ def get_articles_by_topic(topic: str, limit: int = 100) -> list[Article]:
         List of Article dataclasses for the given topic, ordered by
         created_at descending.
     """
+    from sqlalchemy import or_
+
     init_db()
     db: Session = SessionLocal()
     try:
         rows = (
             db.query(ArticleModel)
+            .outerjoin(FeedModel, ArticleModel.source == FeedModel.name)
+            .filter(or_(FeedModel.id.is_(None), FeedModel.enabled.is_(True)))
             .filter(ArticleModel.topic == topic)
             .order_by(ArticleModel.created_at.desc())
             .limit(limit)

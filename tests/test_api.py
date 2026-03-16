@@ -247,6 +247,32 @@ def test_run_feed_pipeline_saves_relevant_articles(
 
 @patch("api.main.parse_feed_entries")
 @patch("api.main.filter_article")
+@patch("api.main.summarize_article")
+@patch("api.main.save_article")
+@patch("api.main.mark_feed_fetched")
+def test_run_feed_pipeline_skips_empty_summary(
+    mock_mark, mock_save, mock_summarize, mock_filter, mock_parse
+):
+    from api.main import _run_feed_pipeline
+    from dataclasses_shared import Feed, RawArticle, FilterResult, SummaryResult
+
+    feed = Feed(id=1, name="TechCrunch", url="https://techcrunch.com/feed/",
+                category="industry", enabled=True)
+    raw = RawArticle(title="Some article", link="https://techcrunch.com/1",
+                     source="TechCrunch", topic="industry", content="Short content.")
+
+    mock_parse.return_value = [raw]
+    mock_filter.return_value = FilterResult(is_relevant=True, reason="On topic")
+    mock_summarize.return_value = SummaryResult(summary="")
+
+    _run_feed_pipeline(1, feed)
+
+    mock_save.assert_not_called()
+    mock_mark.assert_called_once_with(1)
+
+
+@patch("api.main.parse_feed_entries")
+@patch("api.main.filter_article")
 @patch("api.main.increment_feed_error")
 def test_run_feed_pipeline_increments_error_on_rss_failure(
     mock_error, mock_filter, mock_parse

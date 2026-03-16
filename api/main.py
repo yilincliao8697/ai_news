@@ -138,6 +138,8 @@ def _run_feed_pipeline(feed_id: int, feed) -> None:
             if not filter_result.is_relevant:
                 continue
             summary_result = summarize_article(raw)
+            if not summary_result.summary:
+                continue
             article = Article(
                 title=raw.title,
                 link=raw.link,

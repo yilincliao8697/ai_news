@@ -163,6 +163,26 @@ def upsert_feed(
         db.close()
 
 
+def get_feed_by_id(feed_id: int) -> Feed | None:
+    """Look up a single feed by primary key.
+
+    Args:
+        feed_id: Primary key of the feed to look up.
+
+    Returns:
+        Feed dataclass if found, None otherwise.
+    """
+    init_db()
+    db: Session = SessionLocal()
+    try:
+        row = db.query(FeedModel).filter(FeedModel.id == feed_id).first()
+        if not row:
+            return None
+        return _feed_model_to_dataclass(row)
+    finally:
+        db.close()
+
+
 def get_all_feeds() -> list[Feed]:
     """Return all feeds in the registry, ordered by category then name.
 

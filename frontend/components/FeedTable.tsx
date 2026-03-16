@@ -28,7 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   science:  "bg-green-100 text-green-700",
 };
 
-const SOURCE_TYPE_LABELS: Record<string, string> = {
+export const SOURCE_TYPE_LABELS: Record<string, string> = {
   academic_institution: "Academic Institutions",
   academic_journal:     "Academic Journals",
   company_research:     "Company Research Blogs",
@@ -46,7 +46,7 @@ const SOURCE_TYPE_ORDER = [
   "science_media",
 ];
 
-function formatDate(iso: string | null): string {
+export function formatDate(iso: string | null): string {
   if (!iso) return "Never";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
@@ -65,13 +65,18 @@ function groupFeeds(feeds: FeedEntry[]): [string, FeedEntry[]][] {
   return [...ordered, ...remaining].map((k) => [k, grouped[k]]);
 }
 
-type Props = { feeds: FeedEntry[] };
+type Props = {
+  feeds: FeedEntry[];
+  onArticlesChanged?: () => void;
+};
 
-export default function FeedTable({ feeds: initialFeeds }: Props) {
+export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Props) {
   const [feeds, setFeeds] = useState<FeedEntry[]>(initialFeeds);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<number | null>(null);
+  const [bulkLoading, setBulkLoading] = useState<Set<string>>(new Set());
+  const [fetching, setFetching] = useState<Set<number>>(new Set());
 
   function toggleGroup(key: string) {
     setCollapsedGroups((prev) => {
@@ -93,10 +98,54 @@ export default function FeedTable({ feeds: initialFeeds }: Props) {
       setFeeds((prev) =>
         prev.map((f) => (f.id === id ? { ...f, enabled: !currentEnabled } : f))
       );
+      // Trigger targeted fetch if toggling ON with no articles
+      const feed = feeds.find((f) => f.id === id);
+      if (!currentEnabled && feed && feed.recent_articles.length === 0) {
+        triggerFeedFetch(id);
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(null);
+    }
+  }
+
+  async function triggerFeedFetch(id: number) {
+    setFetching((prev) => new Set(prev).add(id));
+    try {
+      await fetch(`${API_BASE}/feeds/${id}/fetch`, { method: "POST" });
+      onArticlesChanged?.();
+    } catch {
+      // fail silently — scheduled pipeline will pick it up
+    } finally {
+      setFetching((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  async function bulkToggleGroup(sourceType: string, enable: boolean) {
+    setBulkLoading((prev) => new Set(prev).add(sourceType));
+    try {
+      const res = await fetch(`${API_BASE}/admin/feeds/bulk-toggle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_type: sourceType, enabled: enable }),
+      });
+      if (!res.ok) throw new Error("Bulk toggle failed");
+      setFeeds((prev) =>
+        prev.map((f) => (f.source_type === sourceType ? { ...f, enabled: enable } : f))
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBulkLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceType);
+        return next;
+      });
     }
   }
 
@@ -108,21 +157,40 @@ export default function FeedTable({ feeds: initialFeeds }: Props) {
         const label = SOURCE_TYPE_LABELS[sourceType] ?? sourceType;
         const enabledCount = groupedFeeds.filter((f) => f.enabled).length;
         const isCollapsed = collapsedGroups.has(sourceType);
+        const isBulkLoading = bulkLoading.has(sourceType);
 
         return (
           <div key={sourceType} className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <button
+            <div
               onClick={() => toggleGroup(sourceType)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
               <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{label}</span>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    bulkToggleGroup(sourceType, enabledCount < groupedFeeds.length);
+                  }}
+                  disabled={isBulkLoading}
+                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                    isBulkLoading
+                      ? "opacity-50 cursor-not-allowed text-gray-400 border-gray-200 dark:border-gray-600"
+                      : "text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200"
+                  }`}
+                >
+                  {isBulkLoading
+                    ? "..."
+                    : enabledCount < groupedFeeds.length
+                    ? "Enable all"
+                    : "Disable all"}
+                </button>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {enabledCount} / {groupedFeeds.length} enabled
                 </span>
                 <span className="text-gray-400 dark:text-gray-500 text-xs">{isCollapsed ? "▶" : "▼"}</span>
               </div>
-            </button>
+            </div>
 
             {!isCollapsed && (
               <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-700 text-sm">
@@ -145,11 +213,17 @@ export default function FeedTable({ feeds: initialFeeds }: Props) {
                       >
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                           {feed.name}
-                          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">
-                            {feed.recent_articles.length > 0
-                              ? `${feed.recent_articles.length} recent`
-                              : "no articles"}
-                          </span>
+                          {fetching.has(feed.id) ? (
+                            <span className="ml-2 text-xs text-blue-500 dark:text-blue-400 animate-pulse">
+                              fetching…
+                            </span>
+                          ) : (
+                            <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">
+                              {feed.recent_articles.length > 0
+                                ? `${feed.recent_articles.length} recent`
+                                : "no articles"}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${

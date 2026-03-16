@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import feedparser
 from dotenv import load_dotenv
 
-from dataclasses_shared import RawArticle
+from dataclasses_shared import Feed, RawArticle
 
 load_dotenv()
 
@@ -122,6 +122,24 @@ def fetch_feed(category: str, url: str) -> list[RawArticle]:
     return articles
 
 
+def parse_feed_entries(feed: Feed) -> list[RawArticle]:
+    """Fetch and parse a single RSS feed. Returns RawArticle list.
+
+    Extracts per-feed parsing logic so it can be reused by the API layer
+    without triggering the full multi-feed pipeline.
+
+    Args:
+        feed: A Feed dataclass with url and category populated.
+
+    Returns:
+        List of RawArticle objects parsed from the feed.
+
+    Raises:
+        ValueError: If the feed fails to parse or returns no entries.
+    """
+    return fetch_feed(feed.category, feed.url)
+
+
 def fetch_articles() -> list[RawArticle]:
     """Fetch articles from all enabled feeds in the database.
 
@@ -139,7 +157,7 @@ def fetch_articles() -> list[RawArticle]:
 
     for feed in enabled_feeds:
         try:
-            articles = fetch_feed(feed.category, feed.url)
+            articles = parse_feed_entries(feed)
             mark_feed_fetched(feed.id)
             print(f"[ingestion] {feed.name}: fetched {len(articles)} articles")
             all_articles.extend(articles)

@@ -1,4 +1,5 @@
 import FeedTable, { FeedEntry } from "@/components/FeedTable";
+import AdminControls from "@/components/AdminControls";
 import ThemeToggle from "@/components/ThemeToggle";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -36,7 +37,10 @@ export default async function AdminPage() {
             <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">python scripts/import_feeds.py</code> first.
           </p>
         ) : (
-          <FeedTable feeds={feeds} />
+          <>
+            <AdminControls initialFeeds={feeds} />
+            <FeedTable feeds={feeds} />
+          </>
         )}
       </div>
     </main>

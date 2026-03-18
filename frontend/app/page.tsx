@@ -167,7 +167,10 @@ export default function HomePage() {
         {topTab === "feeds" && (
           feedsLoading ? (
             <div className="flex justify-center mt-16">
-              <span className="text-gray-400 dark:text-gray-500 text-sm animate-pulse">Loading feeds…</span>
+              <div className="flex flex-col items-center gap-1 animate-pulse">
+                <span className="text-gray-400 dark:text-gray-500 text-sm">Loading feeds…</span>
+                <span className="text-gray-300 dark:text-gray-600 text-xs">This may take a few minutes…</span>
+              </div>
             </div>
           ) : feedsError ? (
             <div className="flex flex-col items-center mt-16 gap-3">

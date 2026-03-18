@@ -147,7 +147,10 @@ export default function AdminPage() {
         </div>
 
         {feedsLoading ? (
-          <p className="text-gray-400 dark:text-gray-500 text-sm animate-pulse mt-8 text-center">Loading feeds…</p>
+          <div className="flex flex-col items-center gap-1 mt-8 animate-pulse">
+            <p className="text-gray-400 dark:text-gray-500 text-sm">Loading feeds…</p>
+            <p className="text-gray-300 dark:text-gray-600 text-xs">This may take a few minutes…</p>
+          </div>
         ) : feedsError ? (
           <div className="flex flex-col items-center mt-16 gap-3">
             <p className="text-gray-500 dark:text-gray-400 text-sm">Failed to load feeds.</p>

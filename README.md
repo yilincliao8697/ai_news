@@ -1,19 +1,28 @@
-# AI News Aggregator
+# AI News
 
-An AI-powered news aggregation system that fetches articles from RSS feeds, filters them for relevance using Claude, summarizes them into 2–4 sentence digests, and displays the results on a personal website.
+An AI-powered news aggregator that fetches articles from a curated registry of RSS feeds, filters them for relevance using Claude, summarizes them into 2–4 sentence digests, and displays the results on a personal website — updated every 6 hours.
+
+**Live site:** [ainews.yilincatherineliao.com](https://ainews.yilincatherineliao.com/)
+
+---
 
 ## How it works
 
 ```
-RSS Feeds → Filter Agent → Summarize Agent → SQLite DB → FastAPI → Next.js
+Feed Registry (DB)
+       ↓
+  fetch_articles()        ← feedparser, all enabled feeds
+       ↓
+  filter_article()        ← Claude: is this relevant?
+       ↓
+  summarize_article()     ← Claude: 2–4 sentence summary
+       ↓
+  save_article()          ← PostgreSQL via SQLAlchemy
+       ↓
+  FastAPI → Next.js       ← read-only public digest
 ```
 
-1. **Ingestion** — `feedparser` pulls articles from 3 RSS feeds every 6 hours
-2. **Filter** — Claude decides if each article is relevant to its topic (ai / tech / science)
-3. **Summarize** — Claude writes a 2–4 sentence plain-English summary
-4. **Store** — SQLAlchemy writes to SQLite (upgradeable to PostgreSQL)
-5. **API** — FastAPI serves read-only JSON endpoints
-6. **Frontend** — Next.js + Tailwind displays the curated feed
+The pipeline runs every 6 hours via APScheduler, embedded inside the FastAPI process. It can also be triggered manually from the `/admin` page.
 
 ---
 
@@ -25,12 +34,22 @@ RSS Feeds → Filter Agent → Summarize Agent → SQLite DB → FastAPI → Nex
 | AI / LLM | Anthropic Claude (`claude-3-haiku-20240307`) |
 | News ingestion | `feedparser` |
 | ORM | SQLAlchemy |
-| Database | SQLite (MVP) → PostgreSQL (production) |
+| Database | PostgreSQL via Supabase |
 | API | FastAPI + uvicorn |
-| Frontend | Next.js 16 + Tailwind CSS |
-| Scheduler | APScheduler (BlockingScheduler, 6-hour interval) |
+| Scheduler | APScheduler (embedded in FastAPI, 6-hour interval) |
+| Frontend | Next.js + Tailwind CSS |
 | Backend hosting | Render / Railway / Fly.io |
 | Frontend hosting | Vercel |
+
+---
+
+## Features
+
+- **Digest view** — articles from the past 7 days grouped by date, with expandable 2–4 sentence summaries
+- **Feed registry** — 173 RSS sources across research, industry, and science; up to 20 enabled at a time
+- **Topic filtering** — All / Research / Industry tabs
+- **Admin dashboard** — API key-gated feed management, pipeline trigger, error monitoring
+- **Dark / light mode**
 
 ---
 
@@ -39,35 +58,37 @@ RSS Feeds → Filter Agent → Summarize Agent → SQLite DB → FastAPI → Nex
 ```
 ai-news/
 ├── ingestion/
-│   └── fetcher.py           # RSS fetching and normalization
+│   └── fetcher.py              # RSS fetching and normalization
 ├── agents/
-│   ├── filter_agent.py      # Relevance filter (Claude)
-│   ├── summarize_agent.py   # Summarizer (Claude)
+│   ├── filter_agent.py         # Relevance filter (Claude)
+│   ├── summarize_agent.py      # Summarizer (Claude)
 │   └── prompts/
 │       ├── filter_prompt.txt
 │       └── summarize_prompt.txt
 ├── database/
-│   ├── models.py            # SQLAlchemy ORM model
-│   └── crud.py              # save_article, get_articles, get_articles_by_topic
+│   ├── models.py               # SQLAlchemy ORM models
+│   └── crud.py                 # All DB read/write functions
 ├── api/
-│   └── main.py              # FastAPI — GET /articles, GET /health
-├── frontend/                # Next.js app (App Router + Tailwind)
+│   └── main.py                 # FastAPI — public + admin endpoints
+├── frontend/
 │   ├── app/
-│   │   ├── layout.tsx
-│   │   └── page.tsx
+│   │   ├── page.tsx            # Main page (Digest + Feed Registry tabs)
+│   │   └── admin/
+│   │       └── page.tsx        # Admin dashboard (key-gated)
 │   └── components/
-│       ├── ArticleCard.tsx
-│       └── TopicFilter.tsx
+│       ├── FeedTable.tsx       # Feed list (interactive or read-only)
+│       ├── DigestView.tsx      # Expandable article digest
+│       └── ThemeToggle.tsx     # Dark/light mode toggle
 ├── scheduler/
-│   └── pipeline.py          # Orchestrates full pipeline, runs every 6h
+│   └── pipeline.py             # Orchestrates full pipeline, runs every 6h
+├── scripts/
+│   └── import_feeds.py         # One-time feed registry seeder
 ├── tests/
 │   ├── test_ingestion.py
 │   ├── test_agents.py
 │   ├── test_database.py
 │   └── test_api.py
-├── dataclasses_shared.py    # Shared data contracts (Article, RawArticle, etc.)
-├── requirements.txt
-└── CLAUDE.md
+└── dataclasses_shared.py       # Shared data contracts
 ```
 
 ---
@@ -79,12 +100,13 @@ ai-news/
 - Python 3.11+
 - Node.js 18+
 - An [Anthropic API key](https://console.anthropic.com/)
+- A PostgreSQL database (or use SQLite for local dev)
 
 ### 1. Clone and set up Python environment
 
 ```bash
-git clone <your-repo-url>
-cd ai-news
+git clone https://github.com/yilincliao8697/ai_news.git
+cd ai_news
 
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
@@ -93,27 +115,31 @@ pip install -r requirements.txt
 
 ### 2. Configure environment variables
 
-```bash
-cp .env.example .env             # or create .env manually
-```
-
-Edit `.env`:
+Create a `.env` file in the project root:
 
 ```bash
 ANTHROPIC_API_KEY=your_key_here
-DATABASE_URL=sqlite:///./news.db
-API_BASE_URL=http://localhost:8000
+DATABASE_URL=sqlite:///./news.db          # or your PostgreSQL URL
+ADMIN_API_KEY=your_secret_admin_key
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-### 3. Set up the frontend
+### 3. Seed the feed registry
+
+```bash
+python scripts/import_feeds.py
+```
+
+This populates the `feeds` table with 173 RSS sources. Safe to run multiple times.
+
+### 4. Set up the frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local  # or create manually
 ```
 
-Edit `frontend/.env.local`:
+Create `frontend/.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
@@ -123,29 +149,14 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ## Running Locally
 
-Open three terminals:
-
-**Terminal 1 — FastAPI backend**
+**Terminal 1 — FastAPI backend** (includes scheduler)
 
 ```bash
 source .venv/bin/activate
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Terminal 2 — Run the pipeline once** (to populate the database)
-
-```bash
-source .venv/bin/activate
-python -c "from scheduler.pipeline import run_pipeline; run_pipeline()"
-```
-
-Or start the full scheduler (runs immediately, then every 6 hours):
-
-```bash
-python scheduler/pipeline.py
-```
-
-**Terminal 3 — Next.js frontend**
+**Terminal 2 — Next.js frontend**
 
 ```bash
 cd frontend
@@ -154,83 +165,52 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+To trigger the pipeline manually without waiting 6 hours:
+
+```bash
+source .venv/bin/activate
+python -c "from scheduler.pipeline import run_pipeline; run_pipeline()"
+```
+
 ---
 
 ## API Reference
 
 Base URL: `http://localhost:8000`
 
-### `GET /health`
+### Public endpoints (no auth required)
 
-Liveness check.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/articles` | All articles, newest first. Query: `?topic=research\|industry\|science`, `?limit=N` |
+| `GET` | `/admin/feeds` | All feeds with recent article previews |
+| `GET` | `/scheduler/status` | Last run and next scheduled run times |
 
-```json
-{"status": "ok"}
-```
+### Protected endpoints (require `X-Admin-Key` header)
 
-### `GET /articles`
-
-Returns all articles, newest first.
-
-**Query parameters:**
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `topic` | string | — | Filter by topic: `ai`, `tech`, or `science` |
-| `limit` | integer | 100 | Max results (1–500) |
-
-**Example:**
-
-```bash
-curl "http://localhost:8000/articles?topic=ai&limit=10"
-```
-
-**Response:**
-
-```json
-[
-  {
-    "title": "New LLM Benchmark Released",
-    "link": "https://example.com/article",
-    "source": "Latent Space",
-    "topic": "ai",
-    "summary": "Researchers released a new benchmark for evaluating LLM reasoning. The benchmark tests multi-step logic across 5,000 problems. Initial results show Claude and GPT-4 performing competitively.",
-    "created_at": "2026-03-11T10:00:00"
-  }
-]
-```
-
-**Error (invalid topic):**
-
-```json
-{"error": "Invalid topic 'sports'. Must be one of: ['ai', 'science', 'tech']"}
-```
-
----
-
-## RSS Feeds
-
-| Topic | Feed |
-|---|---|
-| `ai` | Latent Space — `www.latent.space/feed` |
-| `tech` | Ars Technica — `feeds.arstechnica.com/arstechnica/index` |
-| `science` | Science Daily — `sciencedaily.com/rss/top/science.xml` |
+| Method | Endpoint | Description |
+|---|---|---|
+| `PATCH` | `/admin/feeds/{id}` | Enable or disable a feed. Returns 409 if enabling would exceed 20-feed cap |
+| `PATCH` | `/admin/feeds/bulk-toggle` | Enable/disable all feeds in a `source_type` group |
+| `POST` | `/admin/feeds/{id}/reset-errors` | Reset `error_count` to 0 |
+| `POST` | `/admin/run-pipeline` | Trigger full pipeline (blocking) |
+| `POST` | `/feeds/{id}/fetch` | Queue a background pipeline run for one feed |
 
 ---
 
 ## Data Schema
 
-All modules share these dataclasses from `dataclasses_shared.py`:
-
 ```python
 @dataclass
 class Article:
     title: str
-    link: str        # unique key
+    link: str           # unique key
     source: str
-    topic: str       # "ai" | "tech" | "science"
-    summary: str     # 2–4 sentence AI summary
+    topic: str          # "research" | "industry" | "science"
+    summary: str        # 2–4 sentence AI summary
     created_at: datetime
+    published_at: datetime | None
 
 @dataclass
 class RawArticle:
@@ -238,16 +218,18 @@ class RawArticle:
     link: str
     source: str
     topic: str
-    content: str     # raw text (max 1000 chars), passed to agents
+    content: str        # raw text (max 1000 chars), passed to agents
+    published_at: datetime | None
 
 @dataclass
-class FilterResult:
-    is_relevant: bool
-    reason: str
-
-@dataclass
-class SummaryResult:
-    summary: str
+class Feed:
+    id: int
+    name: str
+    url: str            # unique key
+    category: str       # "research" | "industry" | "science"
+    enabled: bool
+    last_fetched: datetime | None
+    error_count: int
 ```
 
 ---
@@ -259,33 +241,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-Expected output:
-
-```
-tests/test_agents.py .....       5 passed
-tests/test_api.py .......        7 passed
-tests/test_database.py .....     5 passed
-tests/test_ingestion.py ........  8 passed
-
-25 passed
-```
-
 All Anthropic API calls are mocked — tests run without a real API key.
-
----
-
-## Module Boundaries
-
-Each module has a strictly enforced single responsibility:
-
-| Module | Reads from | Writes to | Calls AI |
-|---|---|---|---|
-| `ingestion/` | RSS feeds | — | No |
-| `agents/` | `RawArticle` input | — | Yes |
-| `database/` | DB | DB | No |
-| `api/` | DB (read-only) | — | No |
-| `scheduler/` | All modules | via `database/` | via `agents/` |
-| `frontend/` | API only | — | No |
 
 ---
 
@@ -293,43 +249,46 @@ Each module has a strictly enforced single responsibility:
 
 ### Backend (Render / Railway / Fly.io)
 
-1. Set environment variables: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `API_BASE_URL`
-2. Start command:
-   ```bash
-   uvicorn api.main:app --host 0.0.0.0 --port $PORT
-   ```
-3. For the scheduler, run as a separate worker process:
-   ```bash
-   python scheduler/pipeline.py
-   ```
+Set environment variables:
+
+```
+ANTHROPIC_API_KEY=...
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+ADMIN_API_KEY=your_secret_admin_key
+```
+
+Start command:
+
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port $PORT
+```
+
+The scheduler starts automatically with the API process — no separate worker needed.
 
 ### Frontend (Vercel)
 
 1. Import the repo into Vercel
 2. Set **Root Directory** to `frontend/`
-3. Add environment variable:
-   ```
-   NEXT_PUBLIC_API_BASE_URL=https://your-backend.onrender.com
-   ```
+3. Add environment variable: `NEXT_PUBLIC_API_BASE_URL=https://your-backend.onrender.com`
 4. Deploy
 
-### Database upgrade (SQLite → PostgreSQL)
+### Database (Supabase)
 
-No code changes required. Just update `DATABASE_URL` in your environment:
-
-```bash
-DATABASE_URL=postgresql://user:password@host:5432/dbname
-```
-
-SQLAlchemy handles the rest.
+Set `DATABASE_URL` to your Supabase connection string. SQLAlchemy handles SQLite ↔ PostgreSQL automatically — no code changes required.
 
 ---
 
-## Environment Variables Reference
+## Environment Variables
 
 | Variable | Where | Description |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | `.env` | Anthropic API key |
 | `DATABASE_URL` | `.env` | SQLAlchemy DB URL. Default: `sqlite:///./news.db` |
-| `API_BASE_URL` | `.env` | Backend URL used internally. Default: `http://localhost:8000` |
-| `NEXT_PUBLIC_API_BASE_URL` | `frontend/.env.local` | Backend URL used by the browser |
+| `ADMIN_API_KEY` | `.env` + hosting platform | Secret key for admin API endpoints |
+| `NEXT_PUBLIC_API_BASE_URL` | `frontend/.env.local` + Vercel | Backend URL used by the browser |
+
+---
+
+## Acknowledgements
+
+Feed sources seeded from [foorilla/allainews_sources](https://github.com/foorilla/allainews_sources) — a community-maintained list of AI, ML, and data newsletters and blogs.

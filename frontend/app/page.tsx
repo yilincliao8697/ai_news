@@ -184,6 +184,30 @@ export default function HomePage() {
           )
         )}
       </div>
+
+      <footer className="border-t border-gray-200 dark:border-gray-700 mt-12 py-6 px-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-center gap-4 text-xs text-gray-400 dark:text-gray-500">
+          <span>Catherine Liao</span>
+          <span>·</span>
+          <a
+            href="https://www.linkedin.com/in/yilincatherineliao"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            LinkedIn
+          </a>
+          <span>·</span>
+          <a
+            href="https://github.com/yilincliao8697"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            GitHub
+          </a>
+        </div>
+      </footer>
     </main>
   );
 }

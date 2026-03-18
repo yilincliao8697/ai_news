@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import FeedTable, { FeedEntry, formatDate, SOURCE_TYPE_LABELS } from "@/components/FeedTable";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -87,6 +88,9 @@ export default function AdminPage() {
   if (!apiKey) {
     return (
       <main className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
         <form onSubmit={handleUnlock} className="flex flex-col gap-3 w-full max-w-xs">
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Admin</h1>
           {keyError && (
@@ -138,6 +142,7 @@ export default function AdminPage() {
             >
               Forget key
             </button>
+            <ThemeToggle />
           </div>
         </div>
 

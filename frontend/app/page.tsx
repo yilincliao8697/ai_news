@@ -169,7 +169,7 @@ export default function HomePage() {
             <div className="flex justify-center mt-16">
               <div className="flex flex-col items-center gap-1 animate-pulse">
                 <span className="text-gray-400 dark:text-gray-500 text-sm">Loading feeds…</span>
-                <span className="text-gray-300 dark:text-gray-600 text-xs">This may take a few minutes…</span>
+                <span className="text-gray-400 dark:text-gray-500 text-xs">This may take a few minutes…</span>
               </div>
             </div>
           ) : feedsError ? (

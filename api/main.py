@@ -4,12 +4,13 @@ Exposes public endpoints, feed management endpoints, and admin endpoints.
 Pipeline can be triggered via API for manual runs and targeted per-feed fetches.
 """
 
+import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ from database.crud import (
     get_articles,
     get_articles_by_source,
     get_articles_by_topic,
+    get_enabled_feeds,
     get_feed_by_id,
     increment_feed_error,
     mark_feed_fetched,
@@ -60,6 +62,21 @@ app.add_middleware(
 )
 
 VALID_TOPICS = {"research", "industry", "science"}
+MAX_ENABLED_FEEDS = 20
+
+
+def require_admin_key(x_admin_key: str = Header(default="")) -> None:
+    """FastAPI dependency: validate the X-Admin-Key header.
+
+    Raises:
+        HTTPException 500: if ADMIN_API_KEY env var is not configured.
+        HTTPException 401: if the provided key does not match.
+    """
+    key = os.getenv("ADMIN_API_KEY", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="Server misconfiguration: ADMIN_API_KEY not set")
+    if x_admin_key != key:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # --- Request / Response models ---
@@ -160,6 +177,7 @@ def _run_feed_pipeline(feed_id: int, feed) -> None:
 def fetch_single_feed(
     feed_id: int = Path(..., description="Feed ID to fetch"),
     background_tasks: BackgroundTasks = None,
+    _: None = Depends(require_admin_key),
 ) -> JSONResponse:
     """Queue a background pipeline run for a single feed. Returns immediately.
 
@@ -222,17 +240,31 @@ def list_feeds() -> JSONResponse:
 
 
 @app.patch("/admin/feeds/bulk-toggle")
-def bulk_toggle_feeds(payload: BulkTogglePayload) -> JSONResponse:
+def bulk_toggle_feeds(payload: BulkTogglePayload, _: None = Depends(require_admin_key)) -> JSONResponse:
     """Enable or disable all feeds in a given source_type group.
+
+    Enforces MAX_ENABLED_FEEDS cap when enabling.
 
     Args:
         payload: JSON body with source_type (str) and enabled (bool).
 
     Returns:
         JSON object with count of feeds updated.
+        HTTP 409 if enabling would exceed MAX_ENABLED_FEEDS.
     """
     feeds = get_all_feeds()
     matching = [f for f in feeds if f.source_type == payload.source_type]
+
+    if payload.enabled:
+        current_count = len(get_enabled_feeds())
+        newly_enabled = sum(1 for f in matching if not f.enabled)
+        remaining = MAX_ENABLED_FEEDS - current_count
+        if newly_enabled > remaining:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Feed limit reached. Only {remaining} slot(s) remaining.",
+            )
+
     for feed in matching:
         set_feed_enabled(feed.id, payload.enabled)
     return JSONResponse(content={"updated": len(matching)})
@@ -242,8 +274,9 @@ def bulk_toggle_feeds(payload: BulkTogglePayload) -> JSONResponse:
 def toggle_feed(
     feed_id: int = Path(..., description="Feed ID to update"),
     body: FeedToggleRequest = None,
+    _: None = Depends(require_admin_key),
 ) -> JSONResponse:
-    """Enable or disable a feed.
+    """Enable or disable a feed, enforcing the MAX_ENABLED_FEEDS cap.
 
     Args:
         feed_id: Primary key of the feed to update.
@@ -252,9 +285,18 @@ def toggle_feed(
     Returns:
         JSON object with the updated id and enabled state.
         HTTP 404 if the feed does not exist.
+        HTTP 409 if enabling would exceed MAX_ENABLED_FEEDS.
     """
     if body is None:
         raise HTTPException(status_code=422, detail="Request body required.")
+
+    if body.enabled:
+        current_count = len(get_enabled_feeds())
+        if current_count >= MAX_ENABLED_FEEDS:
+            raise HTTPException(
+                status_code=409,
+                detail="Feed limit reached. Disable a feed before enabling another.",
+            )
 
     found = set_feed_enabled(feed_id, body.enabled)
     if not found:
@@ -264,7 +306,10 @@ def toggle_feed(
 
 
 @app.post("/admin/feeds/{feed_id}/reset-errors")
-def reset_feed_errors(feed_id: int = Path(..., description="Feed ID to reset")) -> JSONResponse:
+def reset_feed_errors(
+    feed_id: int = Path(..., description="Feed ID to reset"),
+    _: None = Depends(require_admin_key),
+) -> JSONResponse:
     """Reset error_count to 0 for a feed by calling mark_feed_fetched.
 
     Args:
@@ -303,7 +348,7 @@ def scheduler_status() -> JSONResponse:
 
 
 @app.post("/admin/run-pipeline")
-def trigger_pipeline() -> JSONResponse:
+def trigger_pipeline(_: None = Depends(require_admin_key)) -> JSONResponse:
     """Manually trigger the full ingestion pipeline. Blocking — returns when complete.
 
     Runs: fetch → filter → summarize → store across all enabled feeds.

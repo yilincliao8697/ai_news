@@ -68,9 +68,10 @@ function groupFeeds(feeds: FeedEntry[]): [string, FeedEntry[]][] {
 type Props = {
   feeds: FeedEntry[];
   onArticlesChanged?: () => void;
+  apiKey?: string;
 };
 
-export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Props) {
+export default function FeedTable({ feeds: initialFeeds, onArticlesChanged, apiKey }: Props) {
   const [feeds, setFeeds] = useState<FeedEntry[]>(initialFeeds);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -78,6 +79,16 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
   const [bulkLoading, setBulkLoading] = useState<Set<string>>(new Set());
   const [fetching, setFetching] = useState<Set<number>>(new Set());
   const [fetchDone, setFetchDone] = useState<Set<number>>(new Set());
+  const [limitError, setLimitError] = useState<string | null>(null);
+
+  const authHeaders: Record<string, string> = apiKey
+    ? { "Content-Type": "application/json", "X-Admin-Key": apiKey }
+    : { "Content-Type": "application/json" };
+
+  function showError(msg: string) {
+    setLimitError(msg);
+    setTimeout(() => setLimitError(null), 4000);
+  }
 
   function toggleGroup(key: string) {
     setCollapsedGroups((prev) => {
@@ -92,9 +103,17 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
     try {
       const res = await fetch(`${API_BASE}/admin/feeds/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ enabled: !currentEnabled }),
       });
+      if (res.status === 409) {
+        showError("Feed limit reached (20 max). Disable a feed first.");
+        return;
+      }
+      if (res.status === 401) {
+        showError("Invalid admin key.");
+        return;
+      }
       if (!res.ok) throw new Error("Toggle failed");
       setFeeds((prev) =>
         prev.map((f) => (f.id === id ? { ...f, enabled: !currentEnabled } : f))
@@ -114,7 +133,7 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
   async function triggerFeedFetch(id: number) {
     setFetching((prev) => new Set(prev).add(id));
     try {
-      await fetch(`${API_BASE}/feeds/${id}/fetch`, { method: "POST" });
+      await fetch(`${API_BASE}/feeds/${id}/fetch`, { method: "POST", headers: authHeaders });
       setFetchDone((prev) => new Set(prev).add(id));
       setTimeout(() => {
         setFetchDone((prev) => {
@@ -139,9 +158,18 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
     try {
       const res = await fetch(`${API_BASE}/admin/feeds/bulk-toggle`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ source_type: sourceType, enabled: enable }),
       });
+      if (res.status === 409) {
+        const data = await res.json();
+        showError(data.detail ?? "Feed limit reached (20 max).");
+        return;
+      }
+      if (res.status === 401) {
+        showError("Invalid admin key.");
+        return;
+      }
       if (!res.ok) throw new Error("Bulk toggle failed");
       setFeeds((prev) =>
         prev.map((f) => (f.source_type === sourceType ? { ...f, enabled: enable } : f))
@@ -161,6 +189,11 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
 
   return (
     <div className="space-y-4">
+      {limitError && (
+        <div className="mb-3 px-4 py-2 rounded-md bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+          {limitError}
+        </div>
+      )}
       {groups.map(([sourceType, groupedFeeds]) => {
         const label = SOURCE_TYPE_LABELS[sourceType] ?? sourceType;
         const enabledCount = groupedFeeds.filter((f) => f.enabled).length;
@@ -175,24 +208,26 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
             >
               <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{label}</span>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    bulkToggleGroup(sourceType, enabledCount < groupedFeeds.length);
-                  }}
-                  disabled={isBulkLoading}
-                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                    isBulkLoading
-                      ? "opacity-50 cursor-not-allowed text-gray-400 border-gray-200 dark:border-gray-600"
-                      : "text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200"
-                  }`}
-                >
-                  {isBulkLoading
-                    ? "..."
-                    : enabledCount < groupedFeeds.length
-                    ? "Enable all"
-                    : "Disable all"}
-                </button>
+                {apiKey && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      bulkToggleGroup(sourceType, enabledCount < groupedFeeds.length);
+                    }}
+                    disabled={isBulkLoading}
+                    className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                      isBulkLoading
+                        ? "opacity-50 cursor-not-allowed text-gray-400 border-gray-200 dark:border-gray-600"
+                        : "text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200"
+                    }`}
+                  >
+                    {isBulkLoading
+                      ? "..."
+                      : enabledCount < groupedFeeds.length
+                      ? "Enable all"
+                      : "Disable all"}
+                  </button>
+                )}
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {enabledCount} / {groupedFeeds.length} enabled
                 </span>
@@ -251,18 +286,24 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged }: Pr
                           ) : "0"}
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => toggleFeed(feed.id, feed.enabled)}
-                            disabled={loading === feed.id}
-                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                              feed.enabled ? "bg-gray-900 dark:bg-gray-100" : "bg-gray-200 dark:bg-gray-600"
-                            } ${loading === feed.id ? "opacity-50 cursor-not-allowed" : ""}`}
-                            aria-label={feed.enabled ? "Disable feed" : "Enable feed"}
-                          >
-                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-gray-900 shadow transition-transform ${
-                              feed.enabled ? "translate-x-4" : "translate-x-1"
-                            }`} />
-                          </button>
+                          {apiKey ? (
+                            <button
+                              onClick={() => toggleFeed(feed.id, feed.enabled)}
+                              disabled={loading === feed.id}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                                feed.enabled ? "bg-gray-900 dark:bg-gray-100" : "bg-gray-200 dark:bg-gray-600"
+                              } ${loading === feed.id ? "opacity-50 cursor-not-allowed" : ""}`}
+                              aria-label={feed.enabled ? "Disable feed" : "Enable feed"}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-gray-900 shadow transition-transform ${
+                                feed.enabled ? "translate-x-4" : "translate-x-1"
+                              }`} />
+                            </button>
+                          ) : (
+                            <span className={`text-base ${feed.enabled ? "text-gray-500 dark:text-gray-400" : "text-gray-300 dark:text-gray-600"}`}>
+                              {feed.enabled ? "●" : "○"}
+                            </span>
+                          )}
                         </td>
                       </tr>
                       {expandedRow === feed.id && (

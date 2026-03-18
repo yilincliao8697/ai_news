@@ -6,12 +6,14 @@ from datetime import datetime
 from unittest.mock import patch
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_news.db"
+os.environ["ADMIN_API_KEY"] = "test-key"
 
 from fastapi.testclient import TestClient
 from dataclasses_shared import Article
 from api.main import app
 
-client = TestClient(app)
+TEST_KEY = "test-key"
+client = TestClient(app, headers={"X-Admin-Key": TEST_KEY})
 
 
 def make_article(link: str = "https://example.com/1", topic: str = "ai") -> Article:
@@ -127,16 +129,18 @@ def test_list_feeds_includes_recent_articles(mock_source, mock_feeds):
     assert data[0]["recent_articles"][0]["title"] == "Recent Article"
 
 
+@patch("api.main.get_enabled_feeds", return_value=[])
 @patch("api.main.set_feed_enabled", return_value=True)
-def test_toggle_feed_enables(mock_toggle):
+def test_toggle_feed_enables(mock_toggle, mock_enabled):
     response = client.patch("/admin/feeds/1", json={"enabled": True})
     assert response.status_code == 200
     assert response.json() == {"id": 1, "enabled": True}
     mock_toggle.assert_called_once_with(1, True)
 
 
+@patch("api.main.get_enabled_feeds", return_value=[])
 @patch("api.main.set_feed_enabled", return_value=False)
-def test_toggle_feed_returns_404_for_missing(mock_toggle):
+def test_toggle_feed_returns_404_for_missing(mock_toggle, mock_enabled):
     response = client.patch("/admin/feeds/9999", json={"enabled": True})
     assert response.status_code == 404
 
@@ -149,9 +153,10 @@ def test_list_articles_invalid_topic_updated():
 
 # --- Bulk toggle tests ---
 
+@patch("api.main.get_enabled_feeds", return_value=[])
 @patch("api.main.get_all_feeds")
 @patch("api.main.set_feed_enabled")
-def test_bulk_toggle_enables_all_in_group(mock_set, mock_feeds):
+def test_bulk_toggle_enables_all_in_group(mock_set, mock_feeds, mock_enabled):
     from dataclasses_shared import Feed
     mock_feeds.return_value = [
         Feed(id=1, name="arXiv", url="https://arxiv.org/rss", category="research",
@@ -187,8 +192,9 @@ def test_bulk_toggle_only_affects_target_group(mock_set, mock_feeds):
     mock_set.assert_called_once_with(1, False)
 
 
+@patch("api.main.get_enabled_feeds", return_value=[])
 @patch("api.main.get_all_feeds", return_value=[])
-def test_bulk_toggle_unknown_group_returns_zero(mock_feeds):
+def test_bulk_toggle_unknown_group_returns_zero(mock_feeds, mock_enabled):
     response = client.patch(
         "/admin/feeds/bulk-toggle",
         json={"source_type": "nonexistent_group", "enabled": True},
@@ -390,3 +396,84 @@ def test_reset_feed_errors_calls_mark_fetched(mock_get_feed, mock_mark):
 def test_reset_feed_errors_returns_404_for_missing(mock_get):
     response = client.post("/admin/feeds/9999/reset-errors")
     assert response.status_code == 404
+
+
+# --- Feed limit tests (module 33) ---
+
+@patch("api.main.get_enabled_feeds")
+def test_toggle_feed_returns_409_at_limit(mock_enabled):
+    """Enabling a feed when 20 are already enabled returns HTTP 409."""
+    from dataclasses_shared import Feed
+    mock_enabled.return_value = [
+        Feed(id=i, name=f"Feed {i}", url=f"https://feed{i}.com/rss",
+             category="industry", enabled=True)
+        for i in range(1, 21)
+    ]
+    response = client.patch("/admin/feeds/99", json={"enabled": True})
+    assert response.status_code == 409
+
+
+@patch("api.main.set_feed_enabled", return_value=True)
+def test_toggle_feed_disable_always_allowed(mock_toggle):
+    """Disabling a feed is always allowed regardless of enabled count."""
+    response = client.patch("/admin/feeds/1", json={"enabled": False})
+    assert response.status_code == 200
+
+
+@patch("api.main.get_enabled_feeds")
+@patch("api.main.get_all_feeds")
+def test_bulk_toggle_returns_409_when_would_exceed_limit(mock_feeds, mock_enabled):
+    """Bulk-enabling a group that would push total over 20 returns HTTP 409."""
+    from dataclasses_shared import Feed
+    mock_enabled.return_value = [
+        Feed(id=i, name=f"Feed {i}", url=f"https://feed{i}.com/rss",
+             category="industry", source_type="company_blog", enabled=True)
+        for i in range(1, 20)
+    ]
+    mock_feeds.return_value = mock_enabled.return_value + [
+        Feed(id=100 + i, name=f"Blog {i}", url=f"https://blog{i}.com/rss",
+             category="industry", source_type="independent_blog", enabled=False)
+        for i in range(3)
+    ]
+    response = client.patch(
+        "/admin/feeds/bulk-toggle",
+        json={"source_type": "independent_blog", "enabled": True},
+    )
+    assert response.status_code == 409
+
+
+# --- Auth tests (module 34) ---
+
+def test_protected_endpoint_requires_key():
+    """PATCH /admin/feeds/{id} returns 401 when X-Admin-Key header is missing."""
+    unauthed = TestClient(app)
+    response = unauthed.patch("/admin/feeds/1", json={"enabled": True})
+    assert response.status_code == 401
+
+
+def test_protected_endpoint_rejects_wrong_key():
+    """PATCH /admin/feeds/{id} returns 401 when X-Admin-Key is incorrect."""
+    unauthed = TestClient(app, headers={"X-Admin-Key": "wrong-key"})
+    response = unauthed.patch("/admin/feeds/1", json={"enabled": True})
+    assert response.status_code == 401
+
+
+@patch("api.main.get_all_feeds", return_value=[])
+@patch("api.main.get_articles", return_value=[])
+def test_public_get_endpoints_require_no_key(mock_articles, mock_feeds):
+    """GET /admin/feeds and GET /articles do not require X-Admin-Key."""
+    unauthed = TestClient(app)
+    assert unauthed.get("/admin/feeds").status_code == 200
+    assert unauthed.get("/articles").status_code == 200
+
+
+def test_missing_admin_api_key_env_returns_500():
+    """If ADMIN_API_KEY env var is not set, protected endpoints return 500."""
+    original = os.environ.pop("ADMIN_API_KEY", None)
+    try:
+        unauthed = TestClient(app, headers={"X-Admin-Key": "any-key"})
+        response = unauthed.patch("/admin/feeds/1", json={"enabled": True})
+        assert response.status_code == 500
+    finally:
+        if original:
+            os.environ["ADMIN_API_KEY"] = original

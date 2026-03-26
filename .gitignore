@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.db
 .venv/
+.venv-wsl/
 node_modules/
 .next/
 CLAUDE.md

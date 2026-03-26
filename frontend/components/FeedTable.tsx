@@ -107,7 +107,7 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged, apiK
         body: JSON.stringify({ enabled: !currentEnabled }),
       });
       if (res.status === 409) {
-        showError("Feed limit reached (20 max). Disable a feed first.");
+        showError("Feed limit reached (30 max). Disable a feed first.");
         return;
       }
       if (res.status === 401) {
@@ -163,7 +163,7 @@ export default function FeedTable({ feeds: initialFeeds, onArticlesChanged, apiK
       });
       if (res.status === 409) {
         const data = await res.json();
-        showError(data.detail ?? "Feed limit reached (20 max).");
+        showError(data.detail ?? "Feed limit reached (30 max).");
         return;
       }
       if (res.status === 401) {

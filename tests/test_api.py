@@ -402,12 +402,12 @@ def test_reset_feed_errors_returns_404_for_missing(mock_get):
 
 @patch("api.main.get_enabled_feeds")
 def test_toggle_feed_returns_409_at_limit(mock_enabled):
-    """Enabling a feed when 20 are already enabled returns HTTP 409."""
+    """Enabling a feed when 30 are already enabled returns HTTP 409."""
     from dataclasses_shared import Feed
     mock_enabled.return_value = [
         Feed(id=i, name=f"Feed {i}", url=f"https://feed{i}.com/rss",
              category="industry", enabled=True)
-        for i in range(1, 21)
+        for i in range(1, 31)
     ]
     response = client.patch("/admin/feeds/99", json={"enabled": True})
     assert response.status_code == 409
@@ -423,12 +423,12 @@ def test_toggle_feed_disable_always_allowed(mock_toggle):
 @patch("api.main.get_enabled_feeds")
 @patch("api.main.get_all_feeds")
 def test_bulk_toggle_returns_409_when_would_exceed_limit(mock_feeds, mock_enabled):
-    """Bulk-enabling a group that would push total over 20 returns HTTP 409."""
+    """Bulk-enabling a group that would push total over 30 returns HTTP 409."""
     from dataclasses_shared import Feed
     mock_enabled.return_value = [
         Feed(id=i, name=f"Feed {i}", url=f"https://feed{i}.com/rss",
              category="industry", source_type="company_blog", enabled=True)
-        for i in range(1, 20)
+        for i in range(1, 30)
     ]
     mock_feeds.return_value = mock_enabled.return_value + [
         Feed(id=100 + i, name=f"Blog {i}", url=f"https://blog{i}.com/rss",
@@ -440,6 +440,82 @@ def test_bulk_toggle_returns_409_when_would_exceed_limit(mock_feeds, mock_enable
         json={"source_type": "independent_blog", "enabled": True},
     )
     assert response.status_code == 409
+
+
+# --- Add feed tests (module 39) ---
+
+@patch("api.main.upsert_feed")
+def test_add_feed_creates_feed(mock_upsert):
+    """POST /admin/feeds with valid body returns 201 and the created feed."""
+    mock_upsert.return_value = Feed(
+        id=99, name="Reuters Technology",
+        url="https://www.reutersagency.com/feed/?best-topics=technology",
+        category="industry", source_type="major_media", enabled=False,
+    )
+    response = client.post("/admin/feeds", json={
+        "name": "Reuters Technology",
+        "url": "https://www.reutersagency.com/feed/?best-topics=technology",
+        "category": "industry",
+        "source_type": "major_media",
+    })
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Reuters Technology"
+    assert data["category"] == "industry"
+    assert data["source_type"] == "major_media"
+    assert data["enabled"] is False
+    mock_upsert.assert_called_once_with(
+        name="Reuters Technology",
+        url="https://www.reutersagency.com/feed/?best-topics=technology",
+        category="industry",
+        source_type="major_media",
+    )
+
+
+def test_add_feed_rejects_invalid_category():
+    """POST /admin/feeds with an unknown category returns 422."""
+    response = client.post("/admin/feeds", json={
+        "name": "Some Feed",
+        "url": "https://example.com/rss",
+        "category": "sports",
+        "source_type": "major_media",
+    })
+    assert response.status_code == 422
+    assert "category" in response.json()["detail"]
+
+
+def test_add_feed_rejects_empty_name():
+    """POST /admin/feeds with a blank name returns 422."""
+    response = client.post("/admin/feeds", json={
+        "name": "   ",
+        "url": "https://example.com/rss",
+        "category": "industry",
+        "source_type": "major_media",
+    })
+    assert response.status_code == 422
+
+
+def test_add_feed_rejects_empty_source_type():
+    """POST /admin/feeds with a blank source_type returns 422."""
+    response = client.post("/admin/feeds", json={
+        "name": "Some Feed",
+        "url": "https://example.com/rss",
+        "category": "industry",
+        "source_type": "",
+    })
+    assert response.status_code == 422
+
+
+def test_add_feed_requires_admin_key():
+    """POST /admin/feeds without X-Admin-Key returns 401."""
+    unauthed = TestClient(app)
+    response = unauthed.post("/admin/feeds", json={
+        "name": "Some Feed",
+        "url": "https://example.com/rss",
+        "category": "industry",
+        "source_type": "major_media",
+    })
+    assert response.status_code == 401
 
 
 # --- Auth tests (module 34) ---

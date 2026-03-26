@@ -46,7 +46,7 @@ The pipeline runs every 6 hours via APScheduler, embedded inside the FastAPI pro
 ## Features
 
 - **Digest view** — articles from the past 7 days grouped by date, with expandable 2–4 sentence summaries
-- **Feed registry** — 173 RSS sources across research, industry, and science; up to 20 enabled at a time
+- **Feed registry** — 184 RSS sources across research, industry, and science; up to 30 enabled at a time
 - **Topic filtering** — All / Research / Industry tabs
 - **Admin dashboard** — API key-gated feed management, pipeline trigger, error monitoring
 - **Dark / light mode**
@@ -82,7 +82,8 @@ ai-news/
 ├── scheduler/
 │   └── pipeline.py             # Orchestrates full pipeline, runs every 6h
 ├── scripts/
-│   └── import_feeds.py         # One-time feed registry seeder
+│   ├── import_feeds.py         # One-time feed registry seeder (AI/ML sources)
+│   └── import_major_media.py   # One-time seeder for major media RSS feeds
 ├── tests/
 │   ├── test_ingestion.py
 │   ├── test_agents.py
@@ -127,10 +128,11 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ### 3. Seed the feed registry
 
 ```bash
-python scripts/import_feeds.py
+python scripts/import_feeds.py         # 173 AI/ML sources
+python scripts/import_major_media.py   # 11 major media sources (optional)
 ```
 
-This populates the `feeds` table with 173 RSS sources. Safe to run multiple times.
+Safe to run multiple times — both scripts are idempotent.
 
 ### 4. Set up the frontend
 
@@ -191,7 +193,8 @@ Base URL: `http://localhost:8000`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `PATCH` | `/admin/feeds/{id}` | Enable or disable a feed. Returns 409 if enabling would exceed 20-feed cap |
+| `POST` | `/admin/feeds` | Add a new feed to the registry (`name`, `url`, `category`, `source_type`). Returns 201 |
+| `PATCH` | `/admin/feeds/{id}` | Enable or disable a feed. Returns 409 if enabling would exceed 30-feed cap |
 | `PATCH` | `/admin/feeds/bulk-toggle` | Enable/disable all feeds in a `source_type` group |
 | `POST` | `/admin/feeds/{id}/reset-errors` | Reset `error_count` to 0 |
 | `POST` | `/admin/run-pipeline` | Trigger full pipeline (blocking) |

@@ -29,6 +29,7 @@ from database.crud import (
     mark_feed_fetched,
     save_article,
     set_feed_enabled,
+    upsert_feed,
 )
 from ingestion.fetcher import fetch_articles, parse_feed_entries
 from scheduler.pipeline import get_last_run, run_pipeline, scheduler
@@ -62,7 +63,7 @@ app.add_middleware(
 )
 
 VALID_TOPICS = {"research", "industry", "science"}
-MAX_ENABLED_FEEDS = 20
+MAX_ENABLED_FEEDS = 30
 
 
 def require_admin_key(x_admin_key: str = Header(default="")) -> None:
@@ -88,6 +89,13 @@ class FeedToggleRequest(BaseModel):
 class BulkTogglePayload(BaseModel):
     source_type: str
     enabled: bool
+
+
+class AddFeedRequest(BaseModel):
+    name: str
+    url: str
+    category: str
+    source_type: str
 
 
 # --- Public endpoints ---
@@ -237,6 +245,49 @@ def list_feeds() -> JSONResponse:
         payload.append(feed_dict)
 
     return JSONResponse(content=payload)
+
+
+@app.post("/admin/feeds", status_code=201)
+def add_feed(request: AddFeedRequest, _: None = Depends(require_admin_key)) -> JSONResponse:
+    """Add a new feed to the registry, or update an existing one by URL.
+
+    Creates the feed with enabled=False. If a feed with the same URL already
+    exists, upsert_feed() updates its name, category, and source_type.
+
+    Args:
+        request: JSON body with name, url, category, and source_type.
+
+    Returns:
+        JSON object of the created/updated feed. HTTP 422 if category is invalid.
+    """
+    VALID_CATEGORIES = {"research", "industry", "science"}
+    if request.category not in VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"category must be one of {sorted(VALID_CATEGORIES)}",
+        )
+    if not request.name.strip() or not request.url.strip() or not request.source_type.strip():
+        raise HTTPException(status_code=422, detail="name, url, and source_type must not be empty.")
+
+    feed = upsert_feed(
+        name=request.name.strip(),
+        url=request.url.strip(),
+        category=request.category,
+        source_type=request.source_type.strip(),
+    )
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": feed.id,
+            "name": feed.name,
+            "url": feed.url,
+            "category": feed.category,
+            "source_type": feed.source_type,
+            "enabled": feed.enabled,
+            "last_fetched": feed.last_fetched.isoformat() if feed.last_fetched else None,
+            "error_count": feed.error_count,
+        },
+    )
 
 
 @app.patch("/admin/feeds/bulk-toggle")

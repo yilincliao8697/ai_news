@@ -14,6 +14,9 @@ export default function AdminPage() {
   const [feedsLoading, setFeedsLoading] = useState(false);
   const [feedsError, setFeedsError] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [newFeed, setNewFeed] = useState({ name: "", url: "", category: "industry", source_type: "" });
+  const [addFeedStatus, setAddFeedStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [addFeedError, setAddFeedError] = useState("");
 
   // Load key from localStorage on mount
   useEffect(() => {
@@ -71,6 +74,33 @@ export default function AdminPage() {
     }
   }
 
+  async function addFeed(e: React.FormEvent) {
+    e.preventDefault();
+    if (!apiKey) return;
+    setAddFeedStatus("loading");
+    setAddFeedError("");
+    try {
+      const res = await fetch(`${API_BASE}/admin/feeds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": apiKey },
+        body: JSON.stringify(newFeed),
+      });
+      if (res.status === 401) { forgetKey(); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAddFeedError(data.detail ?? "Failed to add feed.");
+        setAddFeedStatus("error");
+        return;
+      }
+      setAddFeedStatus("success");
+      setNewFeed({ name: "", url: "", category: "industry", source_type: "" });
+      await loadFeeds();
+    } catch {
+      setAddFeedError("Network error.");
+      setAddFeedStatus("error");
+    }
+  }
+
   async function resetErrors(feedId: number) {
     if (!apiKey) return;
     const res = await fetch(`${API_BASE}/admin/feeds/${feedId}/reset-errors`, {
@@ -121,7 +151,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admin</h1>
             <span className="text-sm text-gray-400 dark:text-gray-500">
-              {enabledCount} / 20 feeds enabled
+              {enabledCount} / 30 feeds enabled
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -145,6 +175,65 @@ export default function AdminPage() {
             <ThemeToggle />
           </div>
         </div>
+
+        <form
+          onSubmit={addFeed}
+          className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+        >
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Add Feed</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <input
+              type="text"
+              placeholder="Name"
+              value={newFeed.name}
+              onChange={(e) => setNewFeed((f) => ({ ...f, name: e.target.value }))}
+              required
+              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            />
+            <input
+              type="url"
+              placeholder="URL"
+              value={newFeed.url}
+              onChange={(e) => setNewFeed((f) => ({ ...f, url: e.target.value }))}
+              required
+              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            />
+            <select
+              value={newFeed.category}
+              onChange={(e) => setNewFeed((f) => ({ ...f, category: e.target.value }))}
+              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            >
+              <option value="industry">industry</option>
+              <option value="research">research</option>
+              <option value="science">science</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Group (e.g. major_media)"
+              value={newFeed.source_type}
+              onChange={(e) => setNewFeed((f) => ({ ...f, source_type: e.target.value }))}
+              required
+              className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              {addFeedStatus === "success" && (
+                <span className="text-green-600 dark:text-green-400">Feed added.</span>
+              )}
+              {addFeedStatus === "error" && (
+                <span className="text-red-500">{addFeedError}</span>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={addFeedStatus === "loading"}
+              className="px-4 py-2 text-sm font-medium rounded-md bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {addFeedStatus === "loading" ? "Adding…" : "Add Feed"}
+            </button>
+          </div>
+        </form>
 
         {feedsLoading ? (
           <div className="flex flex-col items-center gap-1 mt-8 animate-pulse">

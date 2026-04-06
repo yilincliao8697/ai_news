@@ -480,6 +480,18 @@ def scheduler_status() -> JSONResponse:
     })
 
 
+@app.post("/admin/send-newsletter")
+def trigger_newsletter(
+    frequency: str = Query(default="daily", description="daily or weekly"),
+    _: None = Depends(require_admin_key),
+) -> JSONResponse:
+    """Manually trigger the newsletter for a given frequency. Blocking."""
+    if frequency not in VALID_FREQUENCIES:
+        raise HTTPException(status_code=422, detail=f"frequency must be one of: {sorted(VALID_FREQUENCIES)}")
+    result = send_newsletter(frequency)
+    return JSONResponse(content=result)
+
+
 @app.post("/admin/run-pipeline")
 def trigger_pipeline(_: None = Depends(require_admin_key)) -> JSONResponse:
     """Manually trigger the full ingestion pipeline. Blocking — returns when complete.

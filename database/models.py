@@ -50,6 +50,18 @@ class FeedModel(Base):
     source_type = Column(String, nullable=True, index=True)
 
 
+class SubscriberModel(Base):
+    """ORM model representing a newsletter subscriber."""
+
+    __tablename__ = "subscribers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    frequency = Column(String, nullable=False)   # "daily" or "weekly"
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    active = Column(Boolean, default=True, nullable=False)
+
+
 def init_db() -> None:
     """Create all tables if they don't already exist."""
     Base.metadata.create_all(bind=engine)

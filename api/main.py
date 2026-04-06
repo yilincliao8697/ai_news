@@ -19,6 +19,7 @@ from agents.filter_agent import filter_article
 from agents.summarize_agent import summarize_article
 from dataclasses_shared import Article
 from database.crud import (
+    deactivate_subscriber,
     get_all_feeds,
     get_articles,
     get_articles_by_source,
@@ -30,8 +31,10 @@ from database.crud import (
     save_article,
     set_feed_enabled,
     upsert_feed,
+    upsert_subscriber,
 )
 from ingestion.fetcher import fetch_articles, parse_feed_entries
+from scheduler.newsletter import send_newsletter
 from scheduler.pipeline import get_last_run, run_pipeline, scheduler
 
 load_dotenv()
@@ -47,6 +50,23 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),
         id="pipeline",
         name="AI News Pipeline",
+    )
+    scheduler.add_job(
+        lambda: send_newsletter("daily"),
+        "cron",
+        hour=8,
+        minute=0,
+        id="newsletter_daily",
+        name="Daily Newsletter",
+    )
+    scheduler.add_job(
+        lambda: send_newsletter("weekly"),
+        "cron",
+        day_of_week="mon",
+        hour=8,
+        minute=0,
+        id="newsletter_weekly",
+        name="Weekly Newsletter",
     )
     scheduler.start()
     yield
@@ -98,6 +118,15 @@ class AddFeedRequest(BaseModel):
     source_type: str
 
 
+class SubscribeRequest(BaseModel):
+    email: str
+    frequency: str   # "daily" or "weekly"
+
+
+class UnsubscribeRequest(BaseModel):
+    email: str
+
+
 # --- Public endpoints ---
 
 @app.get("/health")
@@ -140,6 +169,59 @@ def list_articles(
         payload.append(d)
 
     return JSONResponse(content=payload)
+
+
+# --- Newsletter endpoints ---
+
+VALID_FREQUENCIES = {"daily", "weekly"}
+
+
+@app.post("/newsletter/subscribe")
+def newsletter_subscribe(request: SubscribeRequest) -> JSONResponse:
+    """Subscribe an email address to the newsletter.
+
+    Creates a new subscriber or re-activates an existing one and updates
+    their frequency preference.
+
+    Args:
+        request: JSON body with email and frequency ("daily" or "weekly").
+
+    Returns:
+        JSON {"status": "subscribed", "email": ..., "frequency": ...}.
+        HTTP 422 if email or frequency is invalid.
+    """
+    if not request.email or "@" not in request.email:
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+    if request.frequency not in VALID_FREQUENCIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"frequency must be one of: {sorted(VALID_FREQUENCIES)}",
+        )
+    upsert_subscriber(request.email.strip().lower(), request.frequency)
+    return JSONResponse(content={
+        "status": "subscribed",
+        "email": request.email.strip().lower(),
+        "frequency": request.frequency,
+    })
+
+
+@app.post("/newsletter/unsubscribe")
+def newsletter_unsubscribe(request: UnsubscribeRequest) -> JSONResponse:
+    """Unsubscribe an email address from the newsletter.
+
+    Idempotent — returns 200 even if the email was not found.
+
+    Args:
+        request: JSON body with the email address to unsubscribe.
+
+    Returns:
+        JSON {"status": "unsubscribed", "email": ...}.
+    """
+    deactivate_subscriber(request.email.strip().lower())
+    return JSONResponse(content={
+        "status": "unsubscribed",
+        "email": request.email.strip().lower(),
+    })
 
 
 # --- Feed endpoints ---

@@ -49,3 +49,13 @@ class Feed:
     last_fetched: datetime | None = None
     error_count: int = 0
     source_type: str = "independent_blog"   # display grouping for admin
+
+
+@dataclass
+class Subscriber:
+    """A newsletter subscriber."""
+    id: int
+    email: str
+    frequency: str      # "daily" or "weekly"
+    created_at: datetime
+    active: bool

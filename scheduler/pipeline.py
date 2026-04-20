@@ -116,20 +116,21 @@ def run_pipeline() -> dict[str, int]:
 def start_scheduler() -> None:
     """Start the APScheduler blocking scheduler.
 
-    Runs run_pipeline() immediately on startup, then every 6 hours.
+    Runs run_pipeline() at 2am, 8am, 2pm, and 8pm ET (every 6 hours anchored to 8am ET).
     Uses BlockingScheduler so the process stays alive on cloud hosts
     without requiring cron or a separate process manager.
     """
     scheduler = BlockingScheduler()
     scheduler.add_job(
         run_pipeline,
-        trigger="interval",
-        hours=6,
-        next_run_time=datetime.now(timezone.utc),  # run immediately on startup
+        trigger="cron",
+        hour="2,8,14,20",
+        minute=0,
+        timezone="America/Los_Angeles",
         id="pipeline",
         name="AI News Pipeline",
     )
-    log.info("Scheduler started. Pipeline will run every 6 hours.")
+    log.info("Scheduler started. Pipeline will run at 2am, 8am, 2pm, 8pm ET.")
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

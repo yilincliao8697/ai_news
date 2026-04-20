@@ -45,9 +45,10 @@ async def lifespan(app: FastAPI):
     """Start the background scheduler on API startup and shut it down on exit."""
     scheduler.add_job(
         run_pipeline,
-        trigger="interval",
-        hours=6,
-        next_run_time=datetime.now(timezone.utc),
+        trigger="cron",
+        hour="2,8,14,20",
+        minute=0,
+        timezone="America/Los_Angeles",
         id="pipeline",
         name="AI News Pipeline",
     )

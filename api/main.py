@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
         trigger="cron",
         hour="2,8,14,20",
         minute=0,
-        timezone="America/Los_Angeles",
+        timezone="America/New_York",
         id="pipeline",
         name="AI News Pipeline",
     )

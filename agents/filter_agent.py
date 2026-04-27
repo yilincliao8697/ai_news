@@ -15,7 +15,7 @@ from dataclasses_shared import FilterResult, RawArticle
 load_dotenv()
 
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-_MODEL = "claude-3-haiku-20240307"
+_MODEL = "claude-haiku-4-5-20251001"
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "filter_prompt.txt"
 
 

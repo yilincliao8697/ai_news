@@ -47,9 +47,12 @@ def summarize_article(article: RawArticle) -> SummaryResult:
         message = _client.messages.create(
             model=_MODEL,
             max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "{"},
+            ],
         )
-        raw_text = message.content[0].text.strip()
+        raw_text = "{" + message.content[0].text.strip()
         data = json.loads(raw_text)
         return SummaryResult(summary=str(data["summary"]))
     except (json.JSONDecodeError, KeyError, anthropic.APIError) as e:

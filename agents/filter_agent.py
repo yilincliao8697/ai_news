@@ -48,9 +48,12 @@ def filter_article(article: RawArticle) -> FilterResult:
         message = _client.messages.create(
             model=_MODEL,
             max_tokens=256,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "{"},
+            ],
         )
-        raw_text = message.content[0].text.strip()
+        raw_text = "{" + message.content[0].text.strip()
         data = json.loads(raw_text)
         return FilterResult(
             is_relevant=bool(data["is_relevant"]),

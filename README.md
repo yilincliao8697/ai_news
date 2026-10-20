@@ -1,6 +1,6 @@
 # AI News
 
-An AI-powered news aggregator that fetches articles from a curated registry of RSS feeds, filters them for relevance using Claude, summarizes them into 2–4 sentence digests, and displays the results on a personal website — updated every 6 hours.
+An AI-powered news aggregator that fetches articles from a curated registry of RSS feeds, filters them for relevance using Claude, summarizes them into 2–4 sentence digests, and displays the results on a personal website — updated four times a day.
 
 **Live site:** [ainews.yilincatherineliao.com](https://ainews.yilincatherineliao.com/)
 
@@ -22,7 +22,7 @@ Feed Registry (DB)
   FastAPI → Next.js       ← read-only public digest
 ```
 
-The pipeline runs every 6 hours via APScheduler, embedded inside the FastAPI process. It can also be triggered manually from the `/admin` page.
+The pipeline runs at 2am, 8am, 2pm, and 8pm ET via APScheduler, embedded inside the FastAPI process. It can also be triggered manually from the `/admin` page.
 
 ---
 
@@ -31,12 +31,12 @@ The pipeline runs every 6 hours via APScheduler, embedded inside the FastAPI pro
 | Layer | Technology |
 |---|---|
 | Language | Python 3.11+ |
-| AI / LLM | Anthropic Claude (`claude-3-haiku-20240307`) |
+| AI / LLM | Anthropic Claude (`claude-haiku-4-5-20251001`) |
 | News ingestion | `feedparser` |
 | ORM | SQLAlchemy |
 | Database | PostgreSQL via Supabase |
 | API | FastAPI + uvicorn |
-| Scheduler | APScheduler (embedded in FastAPI, 6-hour interval) |
+| Scheduler | APScheduler (embedded in FastAPI, cron at 2am/8am/2pm/8pm ET) |
 | Frontend | Next.js + Tailwind CSS |
 | Backend hosting | Render / Railway / Fly.io |
 | Frontend hosting | Vercel |
@@ -80,7 +80,7 @@ ai-news/
 │       ├── DigestView.tsx      # Expandable article digest
 │       └── ThemeToggle.tsx     # Dark/light mode toggle
 ├── scheduler/
-│   └── pipeline.py             # Orchestrates full pipeline, runs every 6h
+│   └── pipeline.py             # Orchestrates full pipeline, runs 4x daily (ET)
 ├── scripts/
 │   ├── import_feeds.py         # One-time feed registry seeder (AI/ML sources)
 │   └── import_major_media.py   # One-time seeder for major media RSS feeds
@@ -167,7 +167,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-To trigger the pipeline manually without waiting 6 hours:
+To trigger the pipeline manually without waiting for the next scheduled run:
 
 ```bash
 source .venv/bin/activate

@@ -6,6 +6,6 @@ uvicorn[standard]
 apscheduler
 python-dotenv
 httpx
-psycopg2-binary
+psycopg[binary]
 resend
 pytest

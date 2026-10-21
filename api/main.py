@@ -57,6 +57,7 @@ async def lifespan(app: FastAPI):
         "cron",
         hour=8,
         minute=0,
+        timezone="America/New_York",
         id="newsletter_daily",
         name="Daily Newsletter",
     )
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
         day_of_week="mon",
         hour=8,
         minute=0,
+        timezone="America/New_York",
         id="newsletter_weekly",
         name="Weekly Newsletter",
     )
